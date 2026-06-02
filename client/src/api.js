@@ -1,0 +1,68 @@
+const API = '/api';
+
+async function req(path, opts = {}) {
+  const res = await fetch(API + path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  if (!res.ok) {
+    let msg = `Request failed (${res.status})`;
+    try { const j = await res.json(); msg = j.error || msg; } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  if (res.status === 204) return null;
+  const ct = res.headers.get('content-type') || '';
+  return ct.includes('application/json') ? res.json() : res.text();
+}
+
+export const api = {
+  // settings
+  getSettings: () => req('/settings'),
+  saveSettings: (data) => req('/settings', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // invoices
+  listInvoices: (q = '') => req(`/invoices${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  getInvoice: (id) => req(`/invoices/${id}`),
+  nextNumber: () => req('/invoices/next-number'),
+  createInvoice: (data) => req('/invoices', { method: 'POST', body: JSON.stringify(data) }),
+  updateInvoice: (id, data) => req(`/invoices/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteInvoice: (id) => req(`/invoices/${id}`, { method: 'DELETE' }),
+
+  // customers
+  listCustomers: () => req('/customers'),
+  createCustomer: (data) => req('/customers', { method: 'POST', body: JSON.stringify(data) }),
+  deleteCustomer: (id) => req(`/customers/${id}`, { method: 'DELETE' }),
+
+  // share
+  shareStatus: () => req('/share/status'),
+  emailInvoice: (id, data) => req(`/share/${id}/email`, { method: 'POST', body: JSON.stringify(data) }),
+};
+
+// File downloads (PDF / Word) — trigger a browser download from a blob.
+async function downloadBlob(path, body, fallbackName) {
+  const res = await fetch(API + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Export failed (${res.status})`);
+  const blob = await res.blob();
+  const disp = res.headers.get('content-disposition') || '';
+  const m = disp.match(/filename="(.+?)"/);
+  const name = m ? m[1] : fallbackName;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export const exporter = {
+  pdf: (invoice) => downloadBlob('/export/pdf', invoice, `${invoice.invoiceNo || 'invoice'}.pdf`),
+  docx: (invoice) => downloadBlob('/export/docx', invoice, `${invoice.invoiceNo || 'invoice'}.docx`),
+};
+
+export default api;

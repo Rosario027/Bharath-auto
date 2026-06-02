@@ -1,0 +1,12 @@
+# Nixpacks build configuration for Railway.
+# The root install brings in server deps; the build step installs + builds the client
+# and generates the Prisma client. Start runs migrations then boots the server.
+
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm run start"

@@ -1,0 +1,144 @@
+// Bharath Automation — Invoicing database schema
+// Postgres on Railway. `prisma migrate deploy` runs on boot.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Company settings — the "fixed components" of every invoice.
+// Singleton row (id = 1). Edited in the Settings pane and reflected
+// live across the dashboard, preview and all exports.
+// ──────────────────────────────────────────────────────────────
+model CompanySettings {
+  id           Int      @id @default(1)
+
+  companyName  String   @default("Bharath Automation")
+  tagline      String   @default("")
+  logoDataUrl  String?  // optional uploaded logo (data URL). Falls back to built-in mark.
+
+  // Address & contact (the block that prints under the logo)
+  addressLines String[] @default([])
+  phones       String[] @default([])
+  emails       String[] @default([])
+  website      String   @default("")
+  gstn         String   @default("")
+  division     String   @default("")
+  stateCode    String   @default("33") // for intra/inter-state GST detection (TN = 33)
+
+  // Invoice document defaults
+  invoiceTitle   String  @default("Commercial Invoice")
+  invoiceCopy    String  @default("Original for Buyer")
+  invoicePrefix  String  @default("BA/TR/PS-")
+  nextInvoiceSeq Int     @default(22)
+
+  // Tax defaults
+  defaultCgst  Float   @default(9)
+  defaultSgst  Float   @default(9)
+  defaultIgst  Float   @default(18)
+
+  // Footer / terms
+  paymentTerms String  @default("Immediate.")
+  bankName     String  @default("")
+  bankAccount  String  @default("")
+  bankIfsc     String  @default("")
+  bankBranch   String  @default("")
+  footerNote   String  @default("E & O.E")
+  signatory    String  @default("Authorized Signatory")
+  signatureDataUrl String?
+  termsNote    String  @default("Goods once sold will not be taken back. Subject to Coimbatore jurisdiction.")
+
+  // Presentation
+  defaultTheme String  @default("orange")
+  currency     String  @default("INR")
+  currencySymbol String @default("₹")
+
+  updatedAt DateTime @updatedAt
+}
+
+// ──────────────────────────────────────────────────────────────
+// Saved customers (optional reuse / autofill)
+// ──────────────────────────────────────────────────────────────
+model Customer {
+  id            Int       @id @default(autoincrement())
+  name          String
+  addressLines  String[]  @default([])
+  contactPerson String    @default("")
+  contactPhone  String    @default("")
+  email         String    @default("")
+  gstn          String    @default("")
+  stateCode     String    @default("")
+  createdAt     DateTime  @default(now())
+  invoices      Invoice[]
+}
+
+// ──────────────────────────────────────────────────────────────
+// Invoice — the variable, per-document values entered in the form.
+// ──────────────────────────────────────────────────────────────
+model Invoice {
+  id            Int      @id @default(autoincrement())
+  invoiceNo     String   @unique
+  invoiceDate   DateTime @default(now())
+
+  // Document meta (overridable per invoice, defaulted from settings)
+  title         String   @default("Commercial Invoice")
+  copyType      String   @default("Original for Buyer")
+  transportMode String   @default("By Road")
+  poRefNo       String   @default("")
+  paymentTerms  String   @default("Immediate.")
+
+  // Buyer details (snapshot — invoice stays correct even if customer edited later)
+  customerId        Int?
+  customer          Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  buyerName         String
+  buyerAddressLines String[]  @default([])
+  buyerContactPerson String   @default("")
+  buyerContactPhone String    @default("")
+  buyerEmail        String    @default("")
+  buyerGstn         String    @default("")
+  buyerStateCode    String    @default("")
+
+  // Tax mode
+  taxMode  String  @default("intra") // "intra" => CGST+SGST, "inter" => IGST
+  cgstRate Float   @default(9)
+  sgstRate Float   @default(9)
+  igstRate Float   @default(18)
+
+  // Computed totals (stored as snapshot for fast listing & exact reprint)
+  subTotal    Float  @default(0)
+  cgstAmount  Float  @default(0)
+  sgstAmount  Float  @default(0)
+  igstAmount  Float  @default(0)
+  roundOff    Float  @default(0)
+  grandTotal  Float  @default(0)
+  amountWords String @default("")
+
+  // Presentation
+  theme  String  @default("orange")
+  notes  String  @default("")
+  status String  @default("draft") // draft | finalized
+
+  items InvoiceItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model InvoiceItem {
+  id        Int     @id @default(autoincrement())
+  invoiceId Int
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  slNo        Int
+  description String
+  hsnCode     String  @default("")
+  qty         Float   @default(1)
+  unit        String  @default("Nos")
+  price       Float   @default(0)
+  total       Float   @default(0)
+}
