@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, exporter } from '../api.js';
 import { useSettings } from '../App.jsx';
@@ -35,8 +35,12 @@ function defaultInvoice(settings) {
     theme: settings.defaultTheme,
     notes: '',
     status: 'draft',
-    items: [{ description: '', hsnCode: '', qty: 1, unit: 'Nos', price: 0 }],
+    items: [newItem(settings)],
   };
+}
+
+function newItem(settings) {
+  return { description: '', hsnCode: '', qty: 1, unit: 'Nos', price: 0, gstRate: settings?.defaultGstRate ?? 18 };
 }
 
 function toForm(inv) {
@@ -44,7 +48,9 @@ function toForm(inv) {
     ...inv,
     invoiceDate: inv.invoiceDate ? new Date(inv.invoiceDate).toISOString().slice(0, 10) : todayISO(),
     buyerAddressLines: inv.buyerAddressLines || [],
-    items: inv.items?.length ? inv.items.map(({ id, invoiceId, slNo, total, ...rest }) => rest) : [{ description: '', hsnCode: '', qty: 1, unit: 'Nos', price: 0 }],
+    items: inv.items?.length
+      ? inv.items.map(({ id, invoiceId, slNo, total, ...rest }) => ({ gstRate: 18, ...rest }))
+      : [{ description: '', hsnCode: '', qty: 1, unit: 'Nos', price: 0, gstRate: 18 }],
   };
 }
 
@@ -60,6 +66,30 @@ export default function InvoiceEditor() {
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState('');
   const [toast, setToast] = useState(null);
+
+  // Resizable / collapsible preview pane
+  const [previewW, setPreviewW] = useState(560);
+  const [collapsed, setCollapsed] = useState(false);
+
+  const startResize = (e) => {
+    e.preventDefault();
+    const onMove = (ev) => {
+      const x = ev.touches ? ev.touches[0].clientX : ev.clientX;
+      setPreviewW(Math.min(960, Math.max(340, window.innerWidth - x)));
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
+      document.body.style.userSelect = '';
+    };
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove);
+    window.addEventListener('touchend', onUp);
+  };
 
   const flash = (msg, kind = 'ok') => {
     setToast({ msg, kind });
@@ -103,7 +133,7 @@ export default function InvoiceEditor() {
     const items = inv.items.map((it, idx) => (idx === i ? { ...it, ...patch } : it));
     set({ items });
   };
-  const addItem = () => set({ items: [...inv.items, { description: '', hsnCode: '', qty: 1, unit: 'Nos', price: 0 }] });
+  const addItem = () => set({ items: [...inv.items, newItem(settings)] });
   const removeItem = (i) => set({ items: inv.items.filter((_, idx) => idx !== i) });
 
   // ── Customer ──
@@ -224,14 +254,32 @@ export default function InvoiceEditor() {
   const addressText = (inv.buyerAddressLines || []).join('\n');
 
   return (
-    <div className="editor">
+    <div
+      className={`editor${collapsed ? ' preview-collapsed' : ''}`}
+      style={{ gridTemplateColumns: collapsed ? '1fr 0px' : `minmax(360px, 1fr) ${previewW}px` }}
+    >
       {toast && <div className={`toast ${toast.kind}`}>{toast.msg}</div>}
+
+      {collapsed && (
+        <button className="expand-fab" onClick={() => setCollapsed(false)} title="Show invoice preview">
+          ◀ Expand preview
+        </button>
+      )}
 
       {/* ── Left: form ── */}
       <div className="editor-form">
         <div className="form-head">
           <button className="btn ghost" onClick={() => nav('/')}>&larr; Back</button>
           <h2>{isEdit ? `Edit ${inv.invoiceNo}` : 'New Invoice'}</h2>
+        </div>
+
+        {/* Sale type — drives CGST+SGST vs IGST across the whole invoice */}
+        <div className="saletype-bar">
+          <span className="saletype-label">Sale type</span>
+          <div className="tax-toggle">
+            <button className={`seg ${inv.taxMode === 'intra' ? 'on' : ''}`} onClick={() => set({ taxMode: 'intra' })}>Intra-state · CGST + SGST</button>
+            <button className={`seg ${inv.taxMode === 'inter' ? 'on' : ''}`} onClick={() => set({ taxMode: 'inter' })}>Inter-state · IGST</button>
+          </div>
         </div>
 
         <section className="fsec">
@@ -276,42 +324,51 @@ export default function InvoiceEditor() {
             <button className="btn xs" onClick={addItem}>+ Add item</button>
           </div>
           <div className="items-editor">
-            <div className="ie-head">
-              <span>Description</span><span>HSN</span><span>Qty</span><span>Unit</span><span>Price</span><span>Total</span><span></span>
-            </div>
             {inv.items.map((it, i) => (
-              <div className="ie-row" key={i}>
-                <textarea className="ie-desc" rows={1} value={it.description} placeholder="Item description" onChange={(e) => setItem(i, { description: e.target.value })} />
-                <input value={it.hsnCode} onChange={(e) => setItem(i, { hsnCode: e.target.value })} />
-                <input type="number" step="any" value={it.qty} onChange={(e) => setItem(i, { qty: e.target.value })} />
-                <input value={it.unit} onChange={(e) => setItem(i, { unit: e.target.value })} />
-                <input type="number" step="any" value={it.price} onChange={(e) => setItem(i, { price: e.target.value })} />
-                <div className="ie-total">{formatINR((Number(it.qty) || 0) * (Number(it.price) || 0))}</div>
-                <button className="btn xs danger" onClick={() => removeItem(i)} disabled={inv.items.length === 1}>✕</button>
+              <div className="item-card" key={i}>
+                <div className="item-card-top">
+                  <span className="item-no">{i + 1}</span>
+                  <textarea
+                    className="ie-desc"
+                    rows={2}
+                    value={it.description}
+                    placeholder="Item description (wraps & auto-fits on the invoice)"
+                    onChange={(e) => setItem(i, { description: e.target.value })}
+                  />
+                  <button className="btn xs danger item-del" onClick={() => removeItem(i)} disabled={inv.items.length === 1} title="Remove item">✕</button>
+                </div>
+                <div className="item-card-fields">
+                  <label>HSN<input value={it.hsnCode} onChange={(e) => setItem(i, { hsnCode: e.target.value })} /></label>
+                  <label>Qty<input type="number" step="any" value={it.qty} onChange={(e) => setItem(i, { qty: e.target.value })} /></label>
+                  <label>Unit<input value={it.unit} onChange={(e) => setItem(i, { unit: e.target.value })} /></label>
+                  <label>Price<input type="number" step="any" value={it.price} onChange={(e) => setItem(i, { price: e.target.value })} /></label>
+                  <label>GST %
+                    <select value={Number(it.gstRate) || 0} onChange={(e) => setItem(i, { gstRate: Number(e.target.value) })}>
+                      {[...new Set([0, 5, 12, 18, 28, Number(it.gstRate) || 0])].sort((a, b) => a - b).map((r) => <option key={r} value={r}>{r}%</option>)}
+                    </select>
+                  </label>
+                  <div className="item-line-total">
+                    <span>Line total</span>
+                    <b>{sym} {formatINR((Number(it.qty) || 0) * (Number(it.price) || 0))}</b>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
         </section>
 
         <section className="fsec">
-          <h3>Tax</h3>
-          <div className="tax-toggle">
-            <button className={`seg ${inv.taxMode === 'intra' ? 'on' : ''}`} onClick={() => set({ taxMode: 'intra' })}>Intra-state (CGST + SGST)</button>
-            <button className={`seg ${inv.taxMode === 'inter' ? 'on' : ''}`} onClick={() => set({ taxMode: 'inter' })}>Inter-state (IGST)</button>
-          </div>
-          <div className="grid2">
-            {inv.taxMode === 'intra' ? (
-              <>
-                <label>CGST %<input type="number" step="any" value={inv.cgstRate} onChange={(e) => set({ cgstRate: e.target.value })} /></label>
-                <label>SGST %<input type="number" step="any" value={inv.sgstRate} onChange={(e) => set({ sgstRate: e.target.value })} /></label>
-              </>
-            ) : (
-              <label>IGST %<input type="number" step="any" value={inv.igstRate} onChange={(e) => set({ igstRate: e.target.value })} /></label>
-            )}
-          </div>
+          <h3>Tax Summary <span className="tag">{inv.taxMode === 'inter' ? 'Inter-state · IGST' : 'Intra-state · CGST+SGST'}</span></h3>
           <div className="totals-mini">
             <div><span>Sub Total</span><b>{sym} {formatINR(totals.subTotal)}</b></div>
-            <div><span>Tax</span><b>{sym} {formatINR(totals.cgstAmount + totals.sgstAmount + totals.igstAmount)}</b></div>
+            {totals.taxBreakup.map((g, i) => (
+              inv.taxMode === 'inter' ? (
+                <div key={i}><span>IGST @ {g.rate}% (on {sym} {formatINR(g.taxable)})</span><b>{sym} {formatINR(g.igst)}</b></div>
+              ) : (
+                <div key={i}><span>CGST+SGST @ {g.rate}% (on {sym} {formatINR(g.taxable)})</span><b>{sym} {formatINR(g.cgst + g.sgst)}</b></div>
+              )
+            ))}
+            {Math.abs(totals.roundOff) >= 0.005 ? <div><span>Round Off</span><b>{sym} {formatINR(totals.roundOff)}</b></div> : null}
             <div className="grand"><span>Grand Total</span><b>{sym} {formatINR(totals.grandTotal)}</b></div>
           </div>
         </section>
@@ -324,7 +381,9 @@ export default function InvoiceEditor() {
 
       {/* ── Right: preview + actions ── */}
       <div className="editor-preview">
+        <div className="resizer" onMouseDown={startResize} onTouchStart={startResize} title="Drag to resize" />
         <div className="preview-bar">
+          <button className="btn xs ghost collapse-btn" onClick={() => setCollapsed(true)} title="Hide preview">▶ Collapse</button>
           <div className="theme-picker">
             {THEME_LIST.map((t) => (
               <button

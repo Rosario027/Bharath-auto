@@ -38,9 +38,10 @@ model CompanySettings {
   nextInvoiceSeq Int     @default(22)
 
   // Tax defaults
-  defaultCgst  Float   @default(9)
-  defaultSgst  Float   @default(9)
-  defaultIgst  Float   @default(18)
+  defaultCgst    Float @default(9)
+  defaultSgst    Float @default(9)
+  defaultIgst    Float @default(18)
+  defaultGstRate Float @default(18) // default total GST % applied to new line items
 
   // Footer / terms
   paymentTerms String  @default("Immediate.")
@@ -140,5 +141,6 @@ model InvoiceItem {
   qty         Float   @default(1)
   unit        String  @default("Nos")
   price       Float   @default(0)
+  gstRate     Float   @default(18) // total GST % for this line (split into CGST/SGST or IGST)
   total       Float   @default(0)
 }

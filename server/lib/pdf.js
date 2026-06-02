@@ -152,6 +152,7 @@ export function buildDocDefinition(invoice, settings) {
     { text: 'HSN', style: 'th', alignment: 'center' },
     { text: 'QTY', style: 'th', alignment: 'center' },
     { text: 'PRICE', style: 'th', alignment: 'right' },
+    { text: 'GST%', style: 'th', alignment: 'center' },
     { text: 'TOTAL', style: 'th', alignment: 'right' },
   ];
 
@@ -161,6 +162,7 @@ export function buildDocDefinition(invoice, settings) {
     { text: it.hsnCode || '', alignment: 'center', fontSize: 9, margin: [0, 2, 0, 2] },
     { text: `${formatINR(it.qty, false)} ${it.unit || ''}`.trim(), alignment: 'center', fontSize: 9, margin: [0, 2, 0, 2] },
     { text: formatINR(it.price), alignment: 'right', fontSize: 9, margin: [0, 2, 0, 2] },
+    { text: `${formatINR(it.gstRate, false)}%`, alignment: 'center', fontSize: 9, margin: [0, 2, 0, 2] },
     { text: formatINR(it.total), alignment: 'right', fontSize: 9, margin: [0, 2, 0, 2] },
   ]);
 
@@ -168,14 +170,14 @@ export function buildDocDefinition(invoice, settings) {
   const minRows = 5;
   while (itemRows.length < minRows) {
     itemRows.push([
-      { text: ' ', fontSize: 9, margin: [0, 2, 0, 2] }, {}, {}, {}, {}, {},
+      { text: ' ', fontSize: 9, margin: [0, 2, 0, 2] }, {}, {}, {}, {}, {}, {},
     ]);
   }
 
   const itemsTable = {
     table: {
       headerRows: 1,
-      widths: [22, '*', 48, 48, 65, 70],
+      widths: [20, '*', 46, 42, 60, 38, 64],
       body: [headRow, ...itemRows],
     },
     layout: {
@@ -194,15 +196,17 @@ export function buildDocDefinition(invoice, settings) {
     },
   };
 
-  // Totals (right column)
+  // Totals (right column) — rate-wise GST breakup
   const totalsBody = [
     [{ text: 'Sub Total', style: 'tlabel' }, { text: fmt(totals.subTotal), style: 'tval' }],
   ];
-  if (isInter) {
-    totalsBody.push([{ text: `IGST @ ${invoice.igstRate}%`, style: 'tlabel' }, { text: fmt(totals.igstAmount), style: 'tval' }]);
-  } else {
-    totalsBody.push([{ text: `CGST @ ${invoice.cgstRate}%`, style: 'tlabel' }, { text: fmt(totals.cgstAmount), style: 'tval' }]);
-    totalsBody.push([{ text: `SGST @ ${invoice.sgstRate}%`, style: 'tlabel' }, { text: fmt(totals.sgstAmount), style: 'tval' }]);
+  for (const g of totals.taxBreakup) {
+    if (isInter) {
+      totalsBody.push([{ text: `IGST @ ${formatINR(g.rate, false)}%`, style: 'tlabel' }, { text: fmt(g.igst), style: 'tval' }]);
+    } else {
+      totalsBody.push([{ text: `CGST @ ${formatINR(g.half, false)}%`, style: 'tlabel' }, { text: fmt(g.cgst), style: 'tval' }]);
+      totalsBody.push([{ text: `SGST @ ${formatINR(g.half, false)}%`, style: 'tlabel' }, { text: fmt(g.sgst), style: 'tval' }]);
+    }
   }
   if (Math.abs(totals.roundOff) >= 0.005) {
     totalsBody.push([{ text: 'Round Off', style: 'tlabel' }, { text: fmt(totals.roundOff), style: 'tval' }]);

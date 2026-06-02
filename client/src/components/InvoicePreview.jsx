@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { getTheme } from '../themes.js';
 import { computeTotals } from '../utils/calc.js';
 import { formatINR } from '../utils/money.js';
@@ -146,6 +146,7 @@ export default function InvoicePreview({ invoice, settings, fitToWidth = true, p
             <th className="c-hsn">HSN</th>
             <th className="c-qty">QTY</th>
             <th className="c-price">PRICE</th>
+            <th className="c-gst">GST%</th>
             <th className="c-total">TOTAL</th>
           </tr>
         </thead>
@@ -159,6 +160,7 @@ export default function InvoicePreview({ invoice, settings, fitToWidth = true, p
               <td className="c-hsn">{it._filler ? '' : it.hsnCode}</td>
               <td className="c-qty">{it._filler ? '' : `${formatINR(it.qty, false)}${it.unit ? ' ' + it.unit : ''}`}</td>
               <td className="c-price">{it._filler ? '' : formatINR(it.price)}</td>
+              <td className="c-gst">{it._filler ? '' : `${formatINR(it.gstRate, false)}%`}</td>
               <td className="c-total">{it._filler ? '' : formatINR(it.total)}</td>
             </tr>
           ))}
@@ -170,14 +172,16 @@ export default function InvoicePreview({ invoice, settings, fitToWidth = true, p
         <table className="inv-totals">
           <tbody>
             <tr><td>Sub Total</td><td>{money(totals.subTotal)}</td></tr>
-            {isInter ? (
-              <tr><td>IGST @ {invoice.igstRate}%</td><td>{money(totals.igstAmount)}</td></tr>
-            ) : (
-              <>
-                <tr><td>CGST @ {invoice.cgstRate}%</td><td>{money(totals.cgstAmount)}</td></tr>
-                <tr><td>SGST @ {invoice.sgstRate}%</td><td>{money(totals.sgstAmount)}</td></tr>
-              </>
-            )}
+            {totals.taxBreakup.map((g, i) => (
+              isInter ? (
+                <tr key={i}><td>IGST @ {formatINR(g.rate, false)}%</td><td>{money(g.igst)}</td></tr>
+              ) : (
+                <Fragment key={i}>
+                  <tr><td>CGST @ {formatINR(g.half, false)}%</td><td>{money(g.cgst)}</td></tr>
+                  <tr><td>SGST @ {formatINR(g.half, false)}%</td><td>{money(g.sgst)}</td></tr>
+                </Fragment>
+              )
+            ))}
             {Math.abs(totals.roundOff) >= 0.005 ? (
               <tr><td>Round Off</td><td>{money(totals.roundOff)}</td></tr>
             ) : null}

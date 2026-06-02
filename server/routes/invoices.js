@@ -55,7 +55,7 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-function normalizeItems(items = []) {
+function normalizeItems(items = [], defaultGstRate = 18) {
   return items
     .filter((it) => (it.description && it.description.trim()) || Number(it.qty) || Number(it.price))
     .map((it, idx) => ({
@@ -65,6 +65,9 @@ function normalizeItems(items = []) {
       qty: Number(it.qty) || 0,
       unit: (it.unit || 'Nos').trim(),
       price: Number(it.price) || 0,
+      gstRate: it.gstRate === undefined || it.gstRate === null || it.gstRate === ''
+        ? Number(defaultGstRate) || 0
+        : Number(it.gstRate) || 0,
       total: (Number(it.qty) || 0) * (Number(it.price) || 0),
     }));
 }
@@ -107,7 +110,7 @@ router.post('/', async (req, res, next) => {
   try {
     const settings = await getSettings();
     const body = req.body || {};
-    const items = normalizeItems(body.items);
+    const items = normalizeItems(body.items, settings.defaultGstRate);
     const totals = computeTotals({ ...body, items });
 
     // Generate invoice number if not supplied; consume the sequence.
@@ -149,7 +152,7 @@ router.put('/:id', async (req, res, next) => {
     const id = Number(req.params.id);
     const settings = await getSettings();
     const body = req.body || {};
-    const items = normalizeItems(body.items);
+    const items = normalizeItems(body.items, settings.defaultGstRate);
     const totals = computeTotals({ ...body, items });
 
     const updated = await prisma.$transaction(async (tx) => {

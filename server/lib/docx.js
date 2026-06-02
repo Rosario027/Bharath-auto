@@ -137,7 +137,8 @@ export async function generateInvoiceDocx(invoice, settings) {
     tableHeader: true,
     children: [
       th('SL', AlignmentType.CENTER), th('DESCRIPTION'), th('HSN', AlignmentType.CENTER),
-      th('QTY', AlignmentType.CENTER), th('PRICE', AlignmentType.RIGHT), th('TOTAL', AlignmentType.RIGHT),
+      th('QTY', AlignmentType.CENTER), th('PRICE', AlignmentType.RIGHT),
+      th('GST%', AlignmentType.CENTER), th('TOTAL', AlignmentType.RIGHT),
     ],
   });
 
@@ -153,6 +154,7 @@ export async function generateInvoiceDocx(invoice, settings) {
         td(it.hsnCode || '', AlignmentType.CENTER, shade),
         td(`${formatINR(it.qty, false)} ${it.unit || ''}`.trim(), AlignmentType.CENTER, shade),
         td(formatINR(it.price), AlignmentType.RIGHT, shade),
+        td(`${formatINR(it.gstRate, false)}%`, AlignmentType.CENTER, shade),
         td(formatINR(it.total), AlignmentType.RIGHT, shade),
       ],
     });
@@ -160,7 +162,7 @@ export async function generateInvoiceDocx(invoice, settings) {
 
   const itemsTable = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
-    columnWidths: [6, 50, 12, 10, 11, 11].map((p) => Math.round((p / 100) * 9000)),
+    columnWidths: [5, 45, 12, 10, 12, 7, 12].map((p) => Math.round((p / 100) * 9000)),
     rows: [headerRow, ...itemRows],
   });
 
@@ -174,11 +176,13 @@ export async function generateInvoiceDocx(invoice, settings) {
     });
 
   const totalsRows = [totalRow('Sub Total', money(totals.subTotal))];
-  if (isInter) {
-    totalsRows.push(totalRow(`IGST @ ${invoice.igstRate}%`, money(totals.igstAmount)));
-  } else {
-    totalsRows.push(totalRow(`CGST @ ${invoice.cgstRate}%`, money(totals.cgstAmount)));
-    totalsRows.push(totalRow(`SGST @ ${invoice.sgstRate}%`, money(totals.sgstAmount)));
+  for (const g of totals.taxBreakup) {
+    if (isInter) {
+      totalsRows.push(totalRow(`IGST @ ${formatINR(g.rate, false)}%`, money(g.igst)));
+    } else {
+      totalsRows.push(totalRow(`CGST @ ${formatINR(g.half, false)}%`, money(g.cgst)));
+      totalsRows.push(totalRow(`SGST @ ${formatINR(g.half, false)}%`, money(g.sgst)));
+    }
   }
   if (Math.abs(totals.roundOff) >= 0.005) totalsRows.push(totalRow('Round Off', money(totals.roundOff)));
   totalsRows.push(totalRow('TOTAL', money(totals.grandTotal), { bold: true, shading: theme.totalBg, textColor: theme.totalText }));

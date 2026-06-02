@@ -66,11 +66,10 @@ export default function Settings() {
     buyerContactPhone: '+91-70100 92185',
     buyerGstn: '33ABCDE1234F1Z5',
     taxMode: 'intra',
-    cgstRate: form.defaultCgst, sgstRate: form.defaultSgst, igstRate: form.defaultIgst,
     theme: form.defaultTheme,
     items: [
-      { description: 'Atomberg Studio Pedestal Fan 400mm - Sno White', hsnCode: '84145120', qty: 1, unit: 'Nos', price: 3010 },
-      { description: 'Installation & commissioning charges', hsnCode: '9954', qty: 1, unit: 'Nos', price: 500 },
+      { description: 'Atomberg Studio Pedestal Fan 400mm - Sno White', hsnCode: '84145120', qty: 1, unit: 'Nos', price: 3010, gstRate: form.defaultGstRate ?? 18 },
+      { description: 'Installation & commissioning charges', hsnCode: '9954', qty: 1, unit: 'Nos', price: 500, gstRate: form.defaultGstRate ?? 18 },
     ],
   }), [form]);
 
@@ -133,10 +132,13 @@ export default function Settings() {
         <section className="fsec">
           <h3>Tax Defaults</h3>
           <div className="grid2">
-            <label>CGST %<input type="number" step="any" value={form.defaultCgst} onChange={(e) => set({ defaultCgst: Number(e.target.value) })} /></label>
-            <label>SGST %<input type="number" step="any" value={form.defaultSgst} onChange={(e) => set({ defaultSgst: Number(e.target.value) })} /></label>
-            <label>IGST %<input type="number" step="any" value={form.defaultIgst} onChange={(e) => set({ defaultIgst: Number(e.target.value) })} /></label>
+            <label>Default GST rate % (per new item)
+              <select value={form.defaultGstRate ?? 18} onChange={(e) => set({ defaultGstRate: Number(e.target.value) })}>
+                {[...new Set([0, 5, 12, 18, 28, Number(form.defaultGstRate) || 18])].sort((a, b) => a - b).map((r) => <option key={r} value={r}>{r}%</option>)}
+              </select>
+            </label>
           </div>
+          <p className="subtle" style={{ fontSize: 12 }}>GST is applied per line item; each invoice line can override this rate, and the sale type (intra/inter-state) decides CGST+SGST vs IGST.</p>
         </section>
 
         <section className="fsec">
