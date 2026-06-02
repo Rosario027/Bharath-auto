@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, exporter } from '../api.js';
 import { useSettings } from '../App.jsx';
 import InvoicePreview from '../components/InvoicePreview.jsx';
@@ -40,7 +40,13 @@ function defaultInvoice(settings) {
 }
 
 function newItem(settings) {
-  return { description: '', hsnCode: '', qty: 1, unit: 'Nos', price: 0, gstRate: settings?.defaultGstRate ?? 18 };
+  return { description: '', hsnCode: '', qty: 1, unit: 'Nos', price: 0, gstRate: settings?.defaultGstRate ?? 18, gstInclusive: false };
+}
+
+function lineTaxable(it) {
+  const gross = (Number(it.qty) || 0) * (Number(it.price) || 0);
+  const r = Number(it.gstRate) || 0;
+  return it.gstInclusive ? gross / (1 + r / 100) : gross;
 }
 
 function toForm(inv) {
@@ -49,14 +55,15 @@ function toForm(inv) {
     invoiceDate: inv.invoiceDate ? new Date(inv.invoiceDate).toISOString().slice(0, 10) : todayISO(),
     buyerAddressLines: inv.buyerAddressLines || [],
     items: inv.items?.length
-      ? inv.items.map(({ id, invoiceId, slNo, total, ...rest }) => ({ gstRate: 18, ...rest }))
-      : [{ description: '', hsnCode: '', qty: 1, unit: 'Nos', price: 0, gstRate: 18 }],
+      ? inv.items.map(({ id, invoiceId, slNo, total, ...rest }) => ({ gstRate: 18, gstInclusive: false, ...rest }))
+      : [{ description: '', hsnCode: '', qty: 1, unit: 'Nos', price: 0, gstRate: 18, gstInclusive: false }],
   };
 }
 
 export default function InvoiceEditor() {
   const { id } = useParams();
   const nav = useNavigate();
+  const [searchParams] = useSearchParams();
   const { settings } = useSettings();
   const isEdit = !!id;
 
@@ -66,6 +73,10 @@ export default function InvoiceEditor() {
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState('');
   const [toast, setToast] = useState(null);
+
+  // Client search autofill
+  const [clientQuery, setClientQuery] = useState('');
+  const [clientOpen, setClientOpen] = useState(false);
 
   // Resizable / collapsible preview pane
   const [previewW, setPreviewW] = useState(560);
@@ -100,10 +111,11 @@ export default function InvoiceEditor() {
   useEffect(() => {
     let alive = true;
     (async () => {
+      let custList = [];
       try {
-        const cust = await api.listCustomers();
+        custList = await api.listCustomers();
         if (!alive) return;
-        setCustomers(cust);
+        setCustomers(custList);
       } catch { /* ignore */ }
 
       if (isEdit) {
@@ -115,6 +127,16 @@ export default function InvoiceEditor() {
           const { invoiceNo } = await api.nextNumber();
           base.invoiceNo = invoiceNo;
         } catch { /* ignore */ }
+        // Prefill from ?client=:id (e.g. "New invoice for this client")
+        const clientId = searchParams.get('client');
+        if (clientId) {
+          const c = custList.find((x) => x.id === Number(clientId));
+          if (c) Object.assign(base, {
+            customerId: c.id, buyerName: c.name, buyerAddressLines: c.addressLines || [],
+            buyerContactPerson: c.contactPerson || '', buyerContactPhone: c.contactPhone || '',
+            buyerEmail: c.email || '', buyerGstn: c.gstn || '', buyerStateCode: c.stateCode || '',
+          });
+        }
         if (alive) setInv(base);
       }
     })();
@@ -299,15 +321,35 @@ export default function InvoiceEditor() {
           <div className="fsec-head">
             <h3>Customer</h3>
             <div className="fsec-tools">
-              {customers.length > 0 && (
-                <select defaultValue="" onChange={(e) => applyCustomer(e.target.value)}>
-                  <option value="" disabled>Load saved…</option>
-                  {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              )}
-              <button className="btn xs" onClick={saveCustomer}>Save customer</button>
+              <button className="btn xs" onClick={saveCustomer}>Save to clients</button>
             </div>
           </div>
+          {customers.length > 0 && (
+            <div className="client-search">
+              <input
+                placeholder="🔍 Search existing client to autofill…"
+                value={clientQuery}
+                onChange={(e) => { setClientQuery(e.target.value); setClientOpen(true); }}
+                onFocus={() => setClientOpen(true)}
+                onBlur={() => setTimeout(() => setClientOpen(false), 150)}
+              />
+              {clientOpen && clientQuery.trim() && (
+                <div className="client-dropdown">
+                  {customers
+                    .filter((c) => c.name.toLowerCase().includes(clientQuery.trim().toLowerCase()))
+                    .slice(0, 8)
+                    .map((c) => (
+                      <button key={c.id} className="client-opt" onMouseDown={() => { applyCustomer(c.id); setClientQuery(''); setClientOpen(false); }}>
+                        <b>{c.name}</b>{c.gstn ? <span> · {c.gstn}</span> : null}{c.contactPhone ? <span> · {c.contactPhone}</span> : null}
+                      </button>
+                    ))}
+                  {customers.filter((c) => c.name.toLowerCase().includes(clientQuery.trim().toLowerCase())).length === 0 && (
+                    <div className="client-opt empty">No match — fill the fields below to add a new client.</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           <div className="grid2">
             <label className="full">Customer Name *<input value={inv.buyerName} onChange={(e) => set({ buyerName: e.target.value })} /></label>
             <label className="full">Address<textarea rows={3} value={addressText} placeholder="One line per row" onChange={(e) => set({ buyerAddressLines: e.target.value.split('\n') })} /></label>
@@ -347,9 +389,15 @@ export default function InvoiceEditor() {
                       {[...new Set([0, 5, 12, 18, 28, Number(it.gstRate) || 0])].sort((a, b) => a - b).map((r) => <option key={r} value={r}>{r}%</option>)}
                     </select>
                   </label>
+                  <label>Price is
+                    <div className="incl-toggle">
+                      <button type="button" className={!it.gstInclusive ? 'on' : ''} onClick={() => setItem(i, { gstInclusive: false })}>Excl</button>
+                      <button type="button" className={it.gstInclusive ? 'on' : ''} onClick={() => setItem(i, { gstInclusive: true })}>Incl</button>
+                    </div>
+                  </label>
                   <div className="item-line-total">
-                    <span>Line total</span>
-                    <b>{sym} {formatINR((Number(it.qty) || 0) * (Number(it.price) || 0))}</b>
+                    <span>Taxable</span>
+                    <b>{sym} {formatINR(lineTaxable(it))}</b>
                   </div>
                 </div>
               </div>

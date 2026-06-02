@@ -142,5 +142,6 @@ model InvoiceItem {
   unit        String  @default("Nos")
   price       Float   @default(0)
   gstRate     Float   @default(18) // total GST % for this line (split into CGST/SGST or IGST)
+  gstInclusive Boolean @default(false) // true => entered price already includes GST
   total       Float   @default(0)
 }

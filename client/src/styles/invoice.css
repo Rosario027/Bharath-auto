@@ -107,19 +107,33 @@
 .layout-minimal .inv-items th { background: var(--head-bg); }
 .layout-minimal .inv-company-name { color: var(--ink); }
 
+/* ── Multi-page ── */
+.invoice-pages { display: flex; flex-direction: column; gap: 16px; }
+.inv-slim-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--accent); padding-bottom: 8px; margin-bottom: 12px; }
+.inv-slim-left { display: flex; align-items: center; gap: 8px; }
+.inv-slim-logo { height: 28px; width: auto; }
+.inv-slim-header .inv-company-name { font-size: 15px; }
+.inv-slim-right { text-align: right; font-size: 10px; color: var(--muted); display: flex; flex-direction: column; }
+.inv-page-no { font-weight: 700; color: var(--ink); }
+.inv-pagetotal { display: flex; justify-content: flex-end; gap: 16px; align-items: center; margin-top: 10px; padding: 8px 12px; background: var(--accent-soft); border-radius: 6px; font-size: 12px; }
+.inv-pagetotal b { font-variant-numeric: tabular-nums; font-size: 13px; }
+.inv-continued { text-align: right; font-size: 10px; color: var(--muted); margin-top: 6px; font-style: italic; }
+.incl-tag { display: inline-block; margin-left: 6px; font-size: 8.5px; color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0 4px; vertical-align: middle; white-space: nowrap; }
+
 /* ───────────────────────────────────────────────
-   Print
+   Print — show ONLY the print surface. Using visibility (not display)
+   so the print root's hidden ancestors don't hide it too.
    ─────────────────────────────────────────────── */
 @media print {
-  @page { size: A4; margin: 0; }
-  body { background: #fff; }
-  .sidebar, .app-main, .page, .editor-form, .editor-preview,
-  .settings-form, .settings-preview, .preview-bar, .toolbar, .toast { display: none !important; }
-  .app-shell, .editor, .settings { display: block !important; height: auto !important; }
-
-  .print-only { display: block !important; }
-  .print-only .invoice-print-root { margin: 0; }
+  @page { size: A4; margin: 8mm; }
+  html, body { background: #fff !important; }
+  body * { visibility: hidden !important; }
+  .print-only, .print-only * { visibility: visible !important; }
+  .print-only { display: block !important; position: absolute; left: 0; top: 0; width: 100%; }
   .print-only .invoice-page {
-    box-shadow: none; width: 210mm; min-height: 297mm; margin: 0 auto; page-break-after: avoid;
+    box-shadow: none !important; width: 100%; min-height: 0; margin: 0;
+    page-break-after: always; break-after: page;
   }
+  .print-only .invoice-page:last-child { page-break-after: auto; break-after: auto; }
+  .resizer, .expand-fab, .toast { display: none !important; }
 }

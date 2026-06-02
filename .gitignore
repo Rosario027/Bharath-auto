@@ -8,3 +8,7 @@ npm-debug.log*
 .DS_Store
 dist/
 prisma/dev.db
+
+# Local-only test artifacts (embedded Postgres, smoke scripts, render output)
+/_*
+_pgdata/

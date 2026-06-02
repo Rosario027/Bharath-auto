@@ -68,8 +68,31 @@ function normalizeItems(items = [], defaultGstRate = 18) {
       gstRate: it.gstRate === undefined || it.gstRate === null || it.gstRate === ''
         ? Number(defaultGstRate) || 0
         : Number(it.gstRate) || 0,
+      gstInclusive: !!it.gstInclusive,
       total: (Number(it.qty) || 0) * (Number(it.price) || 0),
     }));
+}
+
+// Find an existing customer by name (case-insensitive) or create one from the
+// invoice's buyer snapshot, so every invoice's client lives in the Client module.
+async function resolveCustomerId(tx, body) {
+  if (body.customerId) return Number(body.customerId);
+  const name = (body.buyerName || '').trim();
+  if (!name) return null;
+  const existing = await tx.customer.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } });
+  if (existing) return existing.id;
+  const created = await tx.customer.create({
+    data: {
+      name,
+      addressLines: Array.isArray(body.buyerAddressLines) ? body.buyerAddressLines.filter(Boolean) : [],
+      contactPerson: body.buyerContactPerson || '',
+      contactPhone: body.buyerContactPhone || '',
+      email: body.buyerEmail || '',
+      gstn: body.buyerGstn || '',
+      stateCode: body.buyerStateCode || '',
+    },
+  });
+  return created.id;
 }
 
 function buildScalarData(body, totals, settings) {
@@ -122,10 +145,12 @@ router.post('/', async (req, res, next) => {
     }
 
     const created = await prisma.$transaction(async (tx) => {
+      const customerId = await resolveCustomerId(tx, body);
       const inv = await tx.invoice.create({
         data: {
           invoiceNo,
           ...buildScalarData(body, totals, settings),
+          customerId,
           items: { create: items },
         },
         include: { items: { orderBy: { slNo: 'asc' } } },
@@ -157,11 +182,13 @@ router.put('/:id', async (req, res, next) => {
 
     const updated = await prisma.$transaction(async (tx) => {
       await tx.invoiceItem.deleteMany({ where: { invoiceId: id } });
+      const customerId = await resolveCustomerId(tx, body);
       return tx.invoice.update({
         where: { id },
         data: {
           ...(body.invoiceNo ? { invoiceNo: body.invoiceNo.trim() } : {}),
           ...buildScalarData(body, totals, settings),
+          customerId,
           items: { create: items },
         },
         include: { items: { orderBy: { slNo: 'asc' } } },

@@ -176,6 +176,7 @@ export function buildDocDefinition(invoice, settings) {
   const itemsTable = {
     table: {
       headerRows: 1,
+      dontBreakRows: true, // keep a line item intact across page breaks
       widths: showHsn ? [20, '*', 46, 42, 60, 38, 64] : [20, '*', 46, 60, 38, 64],
       body: [headRow, ...itemRows],
     },
@@ -273,7 +274,13 @@ export function buildDocDefinition(invoice, settings) {
 
   return {
     pageSize: 'A4',
-    pageMargins: [36, 36, 36, 36],
+    pageMargins: [36, 36, 36, 44],
+    footer: (currentPage, pageCount) => (pageCount > 1 ? {
+      columns: [
+        { text: settings.companyName, fontSize: 7, color: theme.muted, margin: [36, 0, 0, 0] },
+        { text: `Page ${currentPage} of ${pageCount}`, fontSize: 7, color: theme.muted, alignment: 'right', margin: [0, 0, 36, 0] },
+      ],
+    } : null),
     defaultStyle: { font: 'Helvetica', fontSize: 9, color: theme.ink, lineHeight: 1.15 },
     styles: {
       th: { bold: true, fontSize: 8.5, color: theme.tableHeadText, margin: [0, 2, 0, 2] },

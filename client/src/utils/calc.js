@@ -1,5 +1,6 @@
 // Invoice totals. Mirrors server/lib/calc.js
-// Per-line GST, grouped rate-wise; taxMode decides CGST+SGST vs IGST.
+// Per-line GST with inclusive/exclusive handling, grouped rate-wise;
+// taxMode decides CGST+SGST vs IGST.
 import { amountInWords } from './numberToWords.js';
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -12,7 +13,9 @@ export function computeTotals(invoice) {
     const qty = Number(it.qty) || 0;
     const price = Number(it.price) || 0;
     const gstRate = Number(it.gstRate) || 0;
-    return { ...it, slNo: idx + 1, gstRate, total: round2(qty * price) };
+    const gross = qty * price;
+    const taxable = it.gstInclusive ? gross / (1 + gstRate / 100) : gross;
+    return { ...it, slNo: idx + 1, gstRate, gstInclusive: !!it.gstInclusive, total: round2(taxable) };
   });
 
   const subTotal = round2(lineItems.reduce((s, it) => s + it.total, 0));

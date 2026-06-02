@@ -1,9 +1,9 @@
 // Single source of truth for invoice totals. Mirrored on the client
 // (client/src/utils/calc.js) so the live preview matches what is stored.
 //
-// GST is computed PER LINE from each item's gstRate, then grouped rate-wise.
-// Sale type (invoice.taxMode) decides whether each line's GST becomes
-// CGST+SGST (intra-state) or IGST (inter-state).
+// Each line carries gstRate and gstInclusive. When inclusive, the entered
+// price already contains GST, so the taxable value is backed out. GST is then
+// grouped rate-wise; sale type (taxMode) decides CGST+SGST vs IGST.
 import { amountInWords } from './numberToWords.js';
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -16,7 +16,16 @@ export function computeTotals(invoice) {
     const qty = Number(it.qty) || 0;
     const price = Number(it.price) || 0;
     const gstRate = Number(it.gstRate) || 0;
-    return { ...it, slNo: idx + 1, gstRate, total: round2(qty * price) };
+    const gross = qty * price;
+    // taxable (net) value of the line
+    const taxable = it.gstInclusive ? gross / (1 + gstRate / 100) : gross;
+    return {
+      ...it,
+      slNo: idx + 1,
+      gstRate,
+      gstInclusive: !!it.gstInclusive,
+      total: round2(taxable),
+    };
   });
 
   const subTotal = round2(lineItems.reduce((s, it) => s + it.total, 0));
@@ -47,7 +56,7 @@ export function computeTotals(invoice) {
     });
 
   const taxedTotal = subTotal + cgstAmount + sgstAmount + igstAmount;
-  const grandTotal = Math.round(taxedTotal); // round to nearest rupee
+  const grandTotal = Math.round(taxedTotal);
   const roundOff = round2(grandTotal - taxedTotal);
 
   return {
