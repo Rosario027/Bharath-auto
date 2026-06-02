@@ -32,10 +32,6 @@ export const api = {
   listCustomers: () => req('/customers'),
   createCustomer: (data) => req('/customers', { method: 'POST', body: JSON.stringify(data) }),
   deleteCustomer: (id) => req(`/customers/${id}`, { method: 'DELETE' }),
-
-  // share
-  shareStatus: () => req('/share/status'),
-  emailInvoice: (id, data) => req(`/share/${id}/email`, { method: 'POST', body: JSON.stringify(data) }),
 };
 
 // File downloads (PDF / Word) — trigger a browser download from a blob.

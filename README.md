@@ -14,7 +14,7 @@ live in the preview. Choose from **3 invoice themes**.
 | Database | PostgreSQL via Prisma                           |
 | PDF      | `pdfmake` (server-side, vector, no browser)     |
 | Word     | `docx` (server-side .docx)                      |
-| Email    | `nodemailer` (SMTP)                             |
+| Sharing  | WhatsApp (`wa.me`) & Email (`mailto:`) redirects |
 | Hosting  | Railway (Nixpacks)                              |
 
 ## Features
@@ -25,7 +25,8 @@ live in the preview. Choose from **3 invoice themes**.
 - **Settings pane** — company identity, logo upload, address/contact, GSTIN, invoice
   numbering, tax defaults, bank details, signature & footer — all live-previewed.
 - **GST aware** — intra-state (CGST + SGST) or inter-state (IGST); Indian amount-in-words.
-- **Exports & sharing** — Print, PDF, Word, WhatsApp, Email (with PDF attachment).
+- **Exports & sharing** — Print, PDF, Word. WhatsApp and Email open the device's
+  native app (`wa.me` / `mailto:`) with the message pre-filled and the PDF downloaded to attach.
 - **Customers** — save and reuse buyer details.
 
 ## Local development
@@ -53,8 +54,7 @@ npm start                     # db push + seed + serve API & client on $PORT
 
 1. Create a new Railway project and **add the PostgreSQL plugin** (provides `DATABASE_URL`).
 2. Deploy this repo. Nixpacks runs `npm run build` then `npm run start`.
-3. (Optional) For email sharing set `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`,
-   `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`.
+   No extra env vars are required — WhatsApp/Email sharing run entirely client-side.
 
 The start command runs `prisma db push` (creates/updates tables) and seeds the company
 settings on first boot, then serves the app on Railway's `$PORT`.

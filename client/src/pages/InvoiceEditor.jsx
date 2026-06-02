@@ -57,7 +57,6 @@ export default function InvoiceEditor() {
   const [inv, setInv] = useState(null);
   const [savedId, setSavedId] = useState(id ? Number(id) : null);
   const [customers, setCustomers] = useState([]);
-  const [emailReady, setEmailReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState('');
   const [toast, setToast] = useState(null);
@@ -72,10 +71,9 @@ export default function InvoiceEditor() {
     let alive = true;
     (async () => {
       try {
-        const [cust, share] = await Promise.all([api.listCustomers(), api.shareStatus()]);
+        const cust = await api.listCustomers();
         if (!alive) return;
         setCustomers(cust);
-        setEmailReady(share.emailConfigured);
       } catch { /* ignore */ }
 
       if (isEdit) {
@@ -192,26 +190,35 @@ export default function InvoiceEditor() {
   };
 
   const shareEmail = async () => {
-    let theId = savedId;
-    if (!theId) { const r = await persist(); if (!r) return; theId = r.id; }
-    const to = prompt('Send invoice to email:', inv.buyerEmail || '');
-    if (!to) return;
-    if (emailReady) {
-      setBusy('email');
-      try {
-        await api.emailInvoice(theId, { to, includeWord: false });
-        flash(`Emailed to ${to}`);
-      } catch (e) { flash(e.message, 'err'); }
-      finally { setBusy(''); }
-    } else {
-      // Fallback: mailto with summary (no attachment possible), and download PDF.
-      const t = computeTotals(inv);
-      const subject = `Invoice ${inv.invoiceNo} from ${settings.companyName}`;
-      const body = `Dear ${inv.buyerName},\n\nPlease find attached invoice ${inv.invoiceNo} for ${sym} ${formatINR(t.grandTotal)}.\n\nRegards,\n${settings.companyName}`;
-      try { await exporter.pdf(inv); } catch { /* ignore */ }
-      window.location.href = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-      flash('PDF downloaded — attach it to the email');
-    }
+    // Mirror the WhatsApp flow: finalise, download the PDF (the "payload"),
+    // then hand off to the user's default mail app via a mailto: link.
+    let target = inv;
+    if (!savedId) { const r = await persist(); if (!r) return; target = toForm(r); }
+    const t = computeTotals(target);
+    const subject = `Invoice ${target.invoiceNo} from ${settings.companyName}`;
+    const body = [
+      `Dear ${target.buyerName || 'Customer'},`,
+      '',
+      `Please find attached invoice ${target.invoiceNo} for ${sym} ${formatINR(t.grandTotal)}.`,
+      `(${t.amountWords})`,
+      '',
+      'Thank you for your business.',
+      '',
+      'Regards,',
+      settings.companyName,
+      (settings.phones || []).join(', '),
+    ].join('\n');
+
+    try { await exporter.pdf(target); } catch { /* ignore */ }
+
+    const to = encodeURIComponent(target.buyerEmail || '');
+    const href = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    const a = document.createElement('a');
+    a.href = href;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    flash('PDF downloaded — attach it in your mail app');
   };
 
   const addressText = (inv.buyerAddressLines || []).join('\n');
@@ -336,7 +343,7 @@ export default function InvoiceEditor() {
             <button className="btn" onClick={() => doExport('pdf')} disabled={busy === 'pdf'}>{busy === 'pdf' ? '…' : 'PDF'}</button>
             <button className="btn" onClick={() => doExport('docx')} disabled={busy === 'docx'}>{busy === 'docx' ? '…' : 'Word'}</button>
             <button className="btn wa" onClick={shareWhatsApp}>WhatsApp</button>
-            <button className="btn" onClick={shareEmail} disabled={busy === 'email'}>{busy === 'email' ? '…' : 'Email'}</button>
+            <button className="btn" onClick={shareEmail}>Email</button>
           </div>
         </div>
 

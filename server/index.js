@@ -9,7 +9,6 @@ import settingsRouter from './routes/settings.js';
 import invoicesRouter from './routes/invoices.js';
 import customersRouter from './routes/customers.js';
 import exportRouter from './routes/export.js';
-import shareRouter from './routes/share.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -23,7 +22,6 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/invoices', invoicesRouter);
 app.use('/api/customers', customersRouter);
 app.use('/api/export', exportRouter);
-app.use('/api/share', shareRouter);
 
 // ── Serve the built client (single Railway service) ──
 const clientDist = path.resolve(__dirname, '../client/dist');
