@@ -5,7 +5,7 @@ import {
 } from 'docx';
 import { getTheme } from './themes.js';
 import { computeTotals } from './calc.js';
-import { formatINR } from './money.js';
+import { formatINR, formatRate } from './money.js';
 
 const hex = (c) => (c || '#000000').replace('#', '');
 const RUPEE = 'Rs.';
@@ -157,7 +157,7 @@ export async function generateInvoiceDocx(invoice, settings) {
         ...(showHsn ? [td(it.hsnCode || '', AlignmentType.CENTER, shade)] : []),
         td(`${formatINR(it.qty, false)} ${it.unit || ''}`.trim(), AlignmentType.CENTER, shade),
         td(formatINR(it.price), AlignmentType.RIGHT, shade),
-        td(`${formatINR(it.gstRate, false)}%`, AlignmentType.CENTER, shade),
+        td(`${formatRate(it.gstRate)}%`, AlignmentType.CENTER, shade),
         td(formatINR(it.total), AlignmentType.RIGHT, shade),
       ],
     });
@@ -181,10 +181,10 @@ export async function generateInvoiceDocx(invoice, settings) {
   const totalsRows = [totalRow('Sub Total', money(totals.subTotal))];
   for (const g of totals.taxBreakup) {
     if (isInter) {
-      totalsRows.push(totalRow(`IGST @ ${formatINR(g.rate, false)}%`, money(g.igst)));
+      totalsRows.push(totalRow(`IGST @ ${formatRate(g.rate)}%`, money(g.igst)));
     } else {
-      totalsRows.push(totalRow(`CGST @ ${formatINR(g.half, false)}%`, money(g.cgst)));
-      totalsRows.push(totalRow(`SGST @ ${formatINR(g.half, false)}%`, money(g.sgst)));
+      totalsRows.push(totalRow(`CGST @ ${formatRate(g.half)}%`, money(g.cgst)));
+      totalsRows.push(totalRow(`SGST @ ${formatRate(g.half)}%`, money(g.sgst)));
     }
   }
   if (Math.abs(totals.roundOff) >= 0.005) totalsRows.push(totalRow('Round Off', money(totals.roundOff)));

@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { getTheme } from '../themes.js';
 import { computeTotals } from '../utils/calc.js';
 import { paginateItems } from '../utils/paginate.js';
-import { formatINR } from '../utils/money.js';
+import { formatINR, formatRate } from '../utils/money.js';
 
 function fmtDate(d) {
   if (!d) return '';
@@ -156,7 +156,7 @@ export default function InvoicePreview({ invoice, settings, fitToWidth = true, p
               {showHsn && <td className="c-hsn">{it._filler ? '' : it.hsnCode}</td>}
               <td className="c-qty">{it._filler ? '' : `${formatINR(it.qty, false)}${it.unit ? ' ' + it.unit : ''}`}</td>
               <td className="c-price">{it._filler ? '' : formatINR(it.price)}</td>
-              <td className="c-gst">{it._filler ? '' : `${formatINR(it.gstRate, false)}%`}</td>
+              <td className="c-gst">{it._filler ? '' : `${formatRate(it.gstRate)}%`}</td>
               <td className="c-total">{it._filler ? '' : formatINR(it.total)}</td>
             </tr>
           ))}
@@ -173,11 +173,11 @@ export default function InvoicePreview({ invoice, settings, fitToWidth = true, p
             <tr><td>Sub Total</td><td>{money(totals.subTotal)}</td></tr>
             {totals.taxBreakup.map((g, i) => (
               isInter ? (
-                <tr key={i}><td>IGST @ {formatINR(g.rate, false)}%</td><td>{money(g.igst)}</td></tr>
+                <tr key={i}><td>IGST @ {formatRate(g.rate)}%</td><td>{money(g.igst)}</td></tr>
               ) : (
                 <Fragment key={i}>
-                  <tr><td>CGST @ {formatINR(g.half, false)}%</td><td>{money(g.cgst)}</td></tr>
-                  <tr><td>SGST @ {formatINR(g.half, false)}%</td><td>{money(g.sgst)}</td></tr>
+                  <tr><td>CGST @ {formatRate(g.half)}%</td><td>{money(g.cgst)}</td></tr>
+                  <tr><td>SGST @ {formatRate(g.half)}%</td><td>{money(g.sgst)}</td></tr>
                 </Fragment>
               )
             ))}

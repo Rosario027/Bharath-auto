@@ -11,4 +11,9 @@ export function formatINR(n, withDecimals = true) {
   const out = decPart ? `${grouped}.${decPart}` : grouped;
   return neg ? `-${out}` : out;
 }
+// Format a tax rate without forcing whole numbers: 9 -> "9", 2.5 -> "2.5".
+export function formatRate(n) {
+  return String(Math.round((Number(n) || 0) * 100) / 100);
+}
+
 export default formatINR;

@@ -3,7 +3,7 @@
 import PdfPrinter from 'pdfmake/src/printer.js';
 import { getTheme } from './themes.js';
 import { computeTotals } from './calc.js';
-import { formatINR } from './money.js';
+import { formatINR, formatRate } from './money.js';
 
 const FONTS = {
   Helvetica: {
@@ -164,7 +164,7 @@ export function buildDocDefinition(invoice, settings) {
     ...(showHsn ? [{ text: it.hsnCode || '', alignment: 'center', fontSize: 9, margin: [0, 2, 0, 2] }] : []),
     { text: `${formatINR(it.qty, false)} ${it.unit || ''}`.trim(), alignment: 'center', fontSize: 9, margin: [0, 2, 0, 2] },
     { text: formatINR(it.price), alignment: 'right', fontSize: 9, margin: [0, 2, 0, 2] },
-    { text: `${formatINR(it.gstRate, false)}%`, alignment: 'center', fontSize: 9, margin: [0, 2, 0, 2] },
+    { text: `${formatRate(it.gstRate)}%`, alignment: 'center', fontSize: 9, margin: [0, 2, 0, 2] },
     { text: formatINR(it.total), alignment: 'right', fontSize: 9, margin: [0, 2, 0, 2] },
   ]);
 
@@ -202,10 +202,10 @@ export function buildDocDefinition(invoice, settings) {
   ];
   for (const g of totals.taxBreakup) {
     if (isInter) {
-      totalsBody.push([{ text: `IGST @ ${formatINR(g.rate, false)}%`, style: 'tlabel' }, { text: fmt(g.igst), style: 'tval' }]);
+      totalsBody.push([{ text: `IGST @ ${formatRate(g.rate)}%`, style: 'tlabel' }, { text: fmt(g.igst), style: 'tval' }]);
     } else {
-      totalsBody.push([{ text: `CGST @ ${formatINR(g.half, false)}%`, style: 'tlabel' }, { text: fmt(g.cgst), style: 'tval' }]);
-      totalsBody.push([{ text: `SGST @ ${formatINR(g.half, false)}%`, style: 'tlabel' }, { text: fmt(g.sgst), style: 'tval' }]);
+      totalsBody.push([{ text: `CGST @ ${formatRate(g.half)}%`, style: 'tlabel' }, { text: fmt(g.cgst), style: 'tval' }]);
+      totalsBody.push([{ text: `SGST @ ${formatRate(g.half)}%`, style: 'tlabel' }, { text: fmt(g.sgst), style: 'tval' }]);
     }
   }
   if (Math.abs(totals.roundOff) >= 0.005) {
