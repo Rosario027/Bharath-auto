@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
+import { Routes, Route, NavLink } from 'react-router-dom';
 import { api } from './api.js';
 import Dashboard from './pages/Dashboard.jsx';
 import InvoiceEditor from './pages/InvoiceEditor.jsx';
@@ -8,12 +8,11 @@ import Settings from './pages/Settings.jsx';
 const SettingsContext = createContext(null);
 export const useSettings = () => useContext(SettingsContext);
 
-function Sidebar() {
-  const loc = useLocation();
+function Sidebar({ view, setView, isMobile }) {
   const item = (to, label, icon, end) => (
     <NavLink to={to} end={end} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
       <span className="nav-icon">{icon}</span>
-      <span>{label}</span>
+      <span className="nav-label">{label}</span>
     </NavLink>
   );
   return (
@@ -30,7 +29,13 @@ function Sidebar() {
         {item('/new', 'New Invoice', '＋')}
         {item('/settings', 'Settings', '⚙')}
       </nav>
-      <div className="sidebar-foot">Invoicing v1.0</div>
+      <div className="sidebar-foot">
+        <div className="view-toggle" role="group" aria-label="Layout">
+          <button className={`vt ${!isMobile ? 'on' : ''}`} onClick={() => setView('web')} title="Desktop layout">🖥 Web</button>
+          <button className={`vt ${isMobile ? 'on' : ''}`} onClick={() => setView('mobile')} title="Mobile layout">📱 Mobile</button>
+        </div>
+        <div className="ver">Invoicing v1.0</div>
+      </div>
     </aside>
   );
 }
@@ -39,6 +44,22 @@ export default function App() {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Layout: 'auto' follows screen width; 'web'/'mobile' force a layout.
+  const [view, setViewState] = useState(() => {
+    try { return localStorage.getItem('viewMode') || 'auto'; } catch { return 'auto'; }
+  });
+  const [autoMobile, setAutoMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 900 : false));
+  useEffect(() => {
+    const onResize = () => setAutoMobile(window.innerWidth < 900);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const isMobile = view === 'mobile' ? true : view === 'web' ? false : autoMobile;
+  const setView = (v) => {
+    setViewState(v);
+    try { localStorage.setItem('viewMode', v); } catch { /* ignore */ }
+  };
 
   const refreshSettings = useCallback(async () => {
     try {
@@ -67,8 +88,8 @@ export default function App() {
 
   return (
     <SettingsContext.Provider value={{ settings, setSettings, refreshSettings, updateSettingsLocal }}>
-      <div className="app-shell">
-        <Sidebar />
+      <div className={`app-shell ${isMobile ? 'is-mobile' : 'is-web'}`}>
+        <Sidebar view={view} setView={setView} isMobile={isMobile} />
         <main className="app-main">
           <Routes>
             <Route path="/" element={<Dashboard />} />

@@ -145,11 +145,13 @@ export function buildDocDefinition(invoice, settings) {
     margin: [0, 0, 0, 10],
   };
 
-  // Items table
+  // Items table — HSN column only when at least one line has an HSN value.
+  const showHsn = items.some((it) => (it.hsnCode || '').toString().trim() !== '');
+
   const headRow = [
     { text: 'SL', style: 'th', alignment: 'center' },
     { text: 'DESCRIPTION', style: 'th' },
-    { text: 'HSN', style: 'th', alignment: 'center' },
+    ...(showHsn ? [{ text: 'HSN', style: 'th', alignment: 'center' }] : []),
     { text: 'QTY', style: 'th', alignment: 'center' },
     { text: 'PRICE', style: 'th', alignment: 'right' },
     { text: 'GST%', style: 'th', alignment: 'center' },
@@ -159,7 +161,7 @@ export function buildDocDefinition(invoice, settings) {
   const itemRows = items.map((it, i) => [
     { text: String(i + 1), alignment: 'center', fontSize: 9, margin: [0, 2, 0, 2] },
     { text: it.description || '', fontSize: 9, margin: [0, 2, 0, 2] },
-    { text: it.hsnCode || '', alignment: 'center', fontSize: 9, margin: [0, 2, 0, 2] },
+    ...(showHsn ? [{ text: it.hsnCode || '', alignment: 'center', fontSize: 9, margin: [0, 2, 0, 2] }] : []),
     { text: `${formatINR(it.qty, false)} ${it.unit || ''}`.trim(), alignment: 'center', fontSize: 9, margin: [0, 2, 0, 2] },
     { text: formatINR(it.price), alignment: 'right', fontSize: 9, margin: [0, 2, 0, 2] },
     { text: `${formatINR(it.gstRate, false)}%`, alignment: 'center', fontSize: 9, margin: [0, 2, 0, 2] },
@@ -168,16 +170,13 @@ export function buildDocDefinition(invoice, settings) {
 
   // pad to a minimum number of rows for a balanced look
   const minRows = 5;
-  while (itemRows.length < minRows) {
-    itemRows.push([
-      { text: ' ', fontSize: 9, margin: [0, 2, 0, 2] }, {}, {}, {}, {}, {}, {},
-    ]);
-  }
+  const blankRow = () => [{ text: ' ', fontSize: 9, margin: [0, 2, 0, 2] }, {}, ...(showHsn ? [{}] : []), {}, {}, {}, {}];
+  while (itemRows.length < minRows) itemRows.push(blankRow());
 
   const itemsTable = {
     table: {
       headerRows: 1,
-      widths: [20, '*', 46, 42, 60, 38, 64],
+      widths: showHsn ? [20, '*', 46, 42, 60, 38, 64] : [20, '*', 46, 60, 38, 64],
       body: [headRow, ...itemRows],
     },
     layout: {

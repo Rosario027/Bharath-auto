@@ -133,10 +133,13 @@ export async function generateInvoiceDocx(invoice, settings) {
   const th = (t, align = AlignmentType.LEFT) =>
     cell(para([run(t, { bold: true, size: 15, color: hex(theme.tableHeadText) })], { alignment: align }), { shading: theme.tableHeadBg });
 
+  const showHsn = items.some((it) => (it.hsnCode || '').toString().trim() !== '');
+
   const headerRow = new TableRow({
     tableHeader: true,
     children: [
-      th('SL', AlignmentType.CENTER), th('DESCRIPTION'), th('HSN', AlignmentType.CENTER),
+      th('SL', AlignmentType.CENTER), th('DESCRIPTION'),
+      ...(showHsn ? [th('HSN', AlignmentType.CENTER)] : []),
       th('QTY', AlignmentType.CENTER), th('PRICE', AlignmentType.RIGHT),
       th('GST%', AlignmentType.CENTER), th('TOTAL', AlignmentType.RIGHT),
     ],
@@ -151,7 +154,7 @@ export async function generateInvoiceDocx(invoice, settings) {
       children: [
         td(String(i + 1), AlignmentType.CENTER, shade),
         td(it.description || '', AlignmentType.LEFT, shade),
-        td(it.hsnCode || '', AlignmentType.CENTER, shade),
+        ...(showHsn ? [td(it.hsnCode || '', AlignmentType.CENTER, shade)] : []),
         td(`${formatINR(it.qty, false)} ${it.unit || ''}`.trim(), AlignmentType.CENTER, shade),
         td(formatINR(it.price), AlignmentType.RIGHT, shade),
         td(`${formatINR(it.gstRate, false)}%`, AlignmentType.CENTER, shade),
@@ -162,7 +165,7 @@ export async function generateInvoiceDocx(invoice, settings) {
 
   const itemsTable = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
-    columnWidths: [5, 45, 12, 10, 12, 7, 12].map((p) => Math.round((p / 100) * 9000)),
+    columnWidths: (showHsn ? [5, 45, 12, 10, 12, 7, 12] : [5, 57, 10, 12, 7, 12]).map((p) => Math.round((p / 100) * 9000)),
     rows: [headerRow, ...itemRows],
   });
 

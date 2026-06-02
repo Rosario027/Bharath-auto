@@ -84,6 +84,9 @@ export default function InvoicePreview({ invoice, settings, fitToWidth = true, p
 
   const money = (n) => `${sym} ${formatINR(n)}`;
 
+  // Show the HSN column only if at least one line item has an HSN value.
+  const showHsn = items.some((it) => (it.hsnCode || '').toString().trim() !== '');
+
   const page = (
     <div className={`invoice-page layout-${theme.layout}`} style={cssVars} ref={pageRef}>
       {/* Header */}
@@ -143,7 +146,7 @@ export default function InvoicePreview({ invoice, settings, fitToWidth = true, p
           <tr>
             <th className="c-sl">SL</th>
             <th className="c-desc">DESCRIPTION</th>
-            <th className="c-hsn">HSN</th>
+            {showHsn && <th className="c-hsn">HSN</th>}
             <th className="c-qty">QTY</th>
             <th className="c-price">PRICE</th>
             <th className="c-gst">GST%</th>
@@ -157,7 +160,7 @@ export default function InvoicePreview({ invoice, settings, fitToWidth = true, p
               <td className="c-desc" style={{ fontSize: it._filler ? undefined : descFontSize(it.description) }}>
                 {it._filler ? '' : it.description}
               </td>
-              <td className="c-hsn">{it._filler ? '' : it.hsnCode}</td>
+              {showHsn && <td className="c-hsn">{it._filler ? '' : it.hsnCode}</td>}
               <td className="c-qty">{it._filler ? '' : `${formatINR(it.qty, false)}${it.unit ? ' ' + it.unit : ''}`}</td>
               <td className="c-price">{it._filler ? '' : formatINR(it.price)}</td>
               <td className="c-gst">{it._filler ? '' : `${formatINR(it.gstRate, false)}%`}</td>
