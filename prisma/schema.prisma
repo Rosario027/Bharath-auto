@@ -65,6 +65,21 @@ model CompanySettings {
 // ──────────────────────────────────────────────────────────────
 // Saved customers (optional reuse / autofill)
 // ──────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────
+// Invoice number series. Multiple series can exist (e.g. per division
+// or year); each keeps its own running sequence. The next number is
+// auto-generated and never reused, even if an invoice is deleted.
+// ──────────────────────────────────────────────────────────────
+model InvoiceSeries {
+  id        Int      @id @default(autoincrement())
+  name      String   @default("Default")
+  prefix    String   @default("BA/TR/PS-")
+  nextSeq   Int      @default(1)
+  padWidth  Int      @default(4)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
 model Customer {
   id            Int       @id @default(autoincrement())
   name          String
@@ -84,6 +99,7 @@ model Customer {
 model Invoice {
   id            Int      @id @default(autoincrement())
   invoiceNo     String   @unique
+  seriesId      Int?     // which InvoiceSeries produced this number
   invoiceDate   DateTime @default(now())
 
   // Document meta (overridable per invoice, defaulted from settings)

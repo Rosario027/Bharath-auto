@@ -16,6 +16,7 @@ export default function Dashboard() {
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null);
+  const [nextNo, setNextNo] = useState('');
 
   const load = useCallback(async (query = '') => {
     setLoading(true);
@@ -27,17 +28,19 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { api.nextNumber().then((r) => setNextNo(r.invoiceNo)).catch(() => {}); }, [invoices]);
 
   useEffect(() => {
     const t = setTimeout(() => load(q), 250);
     return () => clearTimeout(t);
   }, [q, load]);
 
-  const total = invoices.reduce((s, i) => s + (i.grandTotal || 0), 0);
+  const active = invoices.filter((i) => i.status !== 'deleted');
+  const total = active.reduce((s, i) => s + (i.grandTotal || 0), 0);
   const sym = settings?.currencySymbol || '₹';
 
   const remove = async (inv) => {
-    if (!confirm(`Delete invoice ${inv.invoiceNo}? This cannot be undone.`)) return;
+    if (!confirm(`Delete invoice ${inv.invoiceNo}?\n\nIt stays in records (greyed out) for the audit trail, and its number is never reused.`)) return;
     setBusy(inv.id);
     try {
       await api.deleteInvoice(inv.id);
@@ -72,8 +75,8 @@ export default function Dashboard() {
 
       <div className="stat-row">
         <div className="stat-card">
-          <div className="stat-label">Total Invoices</div>
-          <div className="stat-value">{invoices.length}</div>
+          <div className="stat-label">Active Invoices</div>
+          <div className="stat-value">{active.length}</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">Total Value</div>
@@ -81,7 +84,7 @@ export default function Dashboard() {
         </div>
         <div className="stat-card">
           <div className="stat-label">Next Invoice No</div>
-          <div className="stat-value sm">{settings?.invoicePrefix}{String(settings?.nextInvoiceSeq).padStart(4, '0')}</div>
+          <div className="stat-value sm">{nextNo || '—'}</div>
         </div>
       </div>
 
@@ -105,8 +108,10 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {invoices.map((inv) => (
-                <tr key={inv.id} className="row-click" onClick={() => nav(`/invoice/${inv.id}`)}>
+              {invoices.map((inv) => {
+                const deleted = inv.status === 'deleted';
+                return (
+                <tr key={inv.id} className={`row-click ${deleted ? 'row-deleted' : ''}`} onClick={() => nav(`/invoice/${inv.id}`)}>
                   <td className="mono">{inv.invoiceNo}</td>
                   <td>{fmtDate(inv.invoiceDate)}</td>
                   <td>{inv.buyerName}</td>
@@ -116,11 +121,12 @@ export default function Dashboard() {
                     <div className="row-actions">
                       <button className="btn xs" disabled={busy === inv.id + 'pdf'} onClick={() => download(inv, 'pdf')}>PDF</button>
                       <button className="btn xs" disabled={busy === inv.id + 'docx'} onClick={() => download(inv, 'docx')}>Word</button>
-                      <button className="btn xs danger" disabled={busy === inv.id} onClick={() => remove(inv)}>✕</button>
+                      {!deleted && <button className="btn xs danger" disabled={busy === inv.id} onClick={() => remove(inv)}>✕</button>}
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         )}

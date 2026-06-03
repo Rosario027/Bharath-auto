@@ -9,11 +9,21 @@ function pad(n, width = 4) {
   return String(n).padStart(width, '0');
 }
 
+async function resolveSeries(seriesId) {
+  if (seriesId) {
+    const s = await prisma.invoiceSeries.findUnique({ where: { id: Number(seriesId) } });
+    if (s) return s;
+  }
+  return (await prisma.invoiceSeries.findFirst({ where: { isDefault: true } }))
+    || (await prisma.invoiceSeries.findFirst());
+}
+
 // Build a preview invoice number without consuming the sequence.
 router.get('/next-number', async (req, res, next) => {
   try {
-    const s = await getSettings();
-    res.json({ invoiceNo: `${s.invoicePrefix}${pad(s.nextInvoiceSeq)}` });
+    const s = await resolveSeries(req.query.seriesId);
+    if (!s) return res.json({ invoiceNo: '' });
+    res.json({ invoiceNo: `${s.prefix}${pad(s.nextSeq, s.padWidth)}`, seriesId: s.id });
   } catch (e) {
     next(e);
   }
@@ -136,12 +146,16 @@ router.post('/', async (req, res, next) => {
     const items = normalizeItems(body.items, settings.defaultGstRate);
     const totals = computeTotals({ ...body, items });
 
-    // Generate invoice number if not supplied; consume the sequence.
-    let invoiceNo = (body.invoiceNo || '').trim();
-    let consume = false;
-    if (!invoiceNo) {
-      invoiceNo = `${settings.invoicePrefix}${pad(settings.nextInvoiceSeq)}`;
-      consume = true;
+    const series = await resolveSeries(body.seriesId);
+
+    // Manual number supplied → use as-is (uniqueness enforced below).
+    // Otherwise auto-generate from the chosen series and consume its sequence.
+    const manualNo = (body.invoiceNo || '').trim();
+    let invoiceNo = manualNo;
+    let consumeSeries = false;
+    if (!invoiceNo && series) {
+      invoiceNo = `${series.prefix}${pad(series.nextSeq, series.padWidth)}`;
+      consumeSeries = true;
     }
 
     const created = await prisma.$transaction(async (tx) => {
@@ -149,17 +163,15 @@ router.post('/', async (req, res, next) => {
       const inv = await tx.invoice.create({
         data: {
           invoiceNo,
+          seriesId: series?.id ?? null,
           ...buildScalarData(body, totals, settings),
           customerId,
           items: { create: items },
         },
         include: { items: { orderBy: { slNo: 'asc' } } },
       });
-      if (consume) {
-        await tx.companySettings.update({
-          where: { id: 1 },
-          data: { nextInvoiceSeq: settings.nextInvoiceSeq + 1 },
-        });
+      if (consumeSeries) {
+        await tx.invoiceSeries.update({ where: { id: series.id }, data: { nextSeq: series.nextSeq + 1 } });
       }
       return inv;
     });
@@ -203,8 +215,23 @@ router.put('/:id', async (req, res, next) => {
   }
 });
 
-// Delete
+// Soft delete — keep the record (and its number) for the audit trail.
+// The series sequence is NOT rolled back, so numbers are never reused.
 router.delete('/:id', async (req, res, next) => {
+  try {
+    const updated = await prisma.invoice.update({
+      where: { id: Number(req.params.id) },
+      data: { status: 'deleted' },
+    });
+    res.json({ ok: true, invoice: updated });
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ error: 'Invoice not found' });
+    next(e);
+  }
+});
+
+// Hard delete (permanent) — kept for admin use; not exposed in the UI.
+router.delete('/:id/permanent', async (req, res, next) => {
   try {
     await prisma.invoice.delete({ where: { id: Number(req.params.id) } });
     res.json({ ok: true });

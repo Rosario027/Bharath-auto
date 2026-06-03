@@ -74,7 +74,11 @@ export default function InvoiceEditor() {
   const [busy, setBusy] = useState('');
   const [toast, setToast] = useState(null);
 
-  // Client search autofill
+  // Invoice series
+  const [series, setSeries] = useState([]);
+
+  // Client search autofill (gated behind an explicit "Find existing client")
+  const [clientSearchOpen, setClientSearchOpen] = useState(false);
   const [clientQuery, setClientQuery] = useState('');
   const [clientOpen, setClientOpen] = useState(false);
 
@@ -112,10 +116,12 @@ export default function InvoiceEditor() {
     let alive = true;
     (async () => {
       let custList = [];
+      let seriesList = [];
       try {
-        custList = await api.listCustomers();
+        [custList, seriesList] = await Promise.all([api.listCustomers(), api.listSeries()]);
         if (!alive) return;
         setCustomers(custList);
+        setSeries(seriesList);
       } catch { /* ignore */ }
 
       if (isEdit) {
@@ -123,8 +129,10 @@ export default function InvoiceEditor() {
         if (alive) setInv(toForm(data));
       } else {
         const base = defaultInvoice(settings);
+        const def = seriesList.find((s) => s.isDefault) || seriesList[0];
+        base.seriesId = def?.id ?? null;
         try {
-          const { invoiceNo } = await api.nextNumber();
+          const { invoiceNo } = await api.nextNumber(base.seriesId);
           base.invoiceNo = invoiceNo;
         } catch { /* ignore */ }
         // Prefill from ?client=:id (e.g. "New invoice for this client")
@@ -173,16 +181,27 @@ export default function InvoiceEditor() {
       buyerStateCode: c.stateCode,
     });
   };
-  const saveCustomer = async () => {
-    if (!inv.buyerName.trim()) return flash('Enter a customer name first', 'err');
-    try {
-      const c = await api.createCustomer({
-        name: inv.buyerName, addressLines: inv.buyerAddressLines, contactPerson: inv.buyerContactPerson,
-        contactPhone: inv.buyerContactPhone, email: inv.buyerEmail, gstn: inv.buyerGstn, stateCode: inv.buyerStateCode,
-      });
-      setCustomers((p) => [...p, c]);
-      flash('Customer saved for reuse');
-    } catch (e) { flash(e.message, 'err'); }
+  // ── Series ──
+  const changeSeries = async (sid) => {
+    const id2 = Number(sid);
+    set({ seriesId: id2 });
+    if (!savedId) {
+      try { const { invoiceNo } = await api.nextNumber(id2); set({ seriesId: id2, invoiceNo }); } catch { /* ignore */ }
+    }
+  };
+
+  // Reset the editor to a fresh new invoice so the user can raise the next one.
+  const resetToNew = async () => {
+    const base = defaultInvoice(settings);
+    const def = series.find((s) => s.isDefault) || series[0];
+    base.seriesId = def?.id ?? null;
+    try { const { invoiceNo } = await api.nextNumber(base.seriesId); base.invoiceNo = invoiceNo; } catch { /* ignore */ }
+    setSavedId(null);
+    setClientQuery(''); setClientSearchOpen(false);
+    setInv(base);
+    window.history.replaceState(null, '', '/new');
+    window.scrollTo({ top: 0 });
+    document.querySelector('.editor-form')?.scrollTo({ top: 0 });
   };
 
   // ── Persist ──
@@ -207,23 +226,42 @@ export default function InvoiceEditor() {
     }
   };
 
-  // ── Exports ──
+  // Save (if needed) and return the finalised invoice object, else null.
+  const ensureSaved = async () => {
+    if (savedId) return inv;
+    const r = await persist();
+    return r ? toForm(r) : null;
+  };
+
+  // Save then clear the editor for the next invoice.
+  const saveAndNew = async () => {
+    const r = await persist();
+    if (r) { flash('Saved — ready for the next invoice'); await resetToNew(); }
+  };
+
+  // ── Exports ── (record the invoice first, then clear for the next)
   const doExport = async (kind) => {
     setBusy(kind);
     try {
-      await (kind === 'pdf' ? exporter.pdf(inv) : exporter.docx(inv));
+      const target = await ensureSaved();
+      if (!target) return;
+      await (kind === 'pdf' ? exporter.pdf(target) : exporter.docx(target));
+      await resetToNew();
     } catch (e) { flash(e.message, 'err'); }
     finally { setBusy(''); }
   };
 
-  const doPrint = () => {
+  const doPrint = async () => {
+    const target = await ensureSaved();
+    if (!target) return;
     window.print();
+    await resetToNew();
   };
 
   const shareWhatsApp = async () => {
     // Ensure saved so totals/number are final, then download PDF for manual attach.
-    let target = inv;
-    if (!savedId) { const r = await persist(); if (!r) return; target = toForm(r); }
+    const target = await ensureSaved();
+    if (!target) return;
     const t = computeTotals(target);
     const lines = [
       `*${settings.companyName}*`,
@@ -239,13 +277,14 @@ export default function InvoiceEditor() {
     try { await exporter.pdf(target); } catch { /* ignore */ }
     window.open(url, '_blank');
     flash('PDF downloaded — attach it in WhatsApp');
+    await resetToNew();
   };
 
   const shareEmail = async () => {
     // Mirror the WhatsApp flow: finalise, download the PDF (the "payload"),
     // then hand off to the user's default mail app via a mailto: link.
-    let target = inv;
-    if (!savedId) { const r = await persist(); if (!r) return; target = toForm(r); }
+    const target = await ensureSaved();
+    if (!target) return;
     const t = computeTotals(target);
     const subject = `Invoice ${target.invoiceNo} from ${settings.companyName}`;
     const body = [
@@ -271,6 +310,7 @@ export default function InvoiceEditor() {
     a.click();
     a.remove();
     flash('PDF downloaded — attach it in your mail app');
+    await resetToNew();
   };
 
   const addressText = (inv.buyerAddressLines || []).join('\n');
@@ -307,7 +347,14 @@ export default function InvoiceEditor() {
         <section className="fsec">
           <h3>Invoice Details</h3>
           <div className="grid2">
-            <label>Invoice No<input value={inv.invoiceNo} onChange={(e) => set({ invoiceNo: e.target.value })} /></label>
+            <label>Series
+              <select value={inv.seriesId ?? ''} disabled={!!savedId} onChange={(e) => changeSeries(e.target.value)}>
+                {series.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.prefix})</option>)}
+              </select>
+            </label>
+            <label>Invoice No <span className="hint">auto</span>
+              <input value={inv.invoiceNo} readOnly title="Auto-generated from the series — change the series in Settings" />
+            </label>
             <label>Date<input type="date" value={inv.invoiceDate} onChange={(e) => set({ invoiceDate: e.target.value })} /></label>
             <label>Title<input value={inv.title} onChange={(e) => set({ title: e.target.value })} /></label>
             <label>Copy Type<input value={inv.copyType} onChange={(e) => set({ copyType: e.target.value })} /></label>
@@ -319,32 +366,32 @@ export default function InvoiceEditor() {
 
         <section className="fsec">
           <div className="fsec-head">
-            <h3>Customer</h3>
+            <h3>Customer <span className="hint">new client — saved automatically</span></h3>
             <div className="fsec-tools">
-              <button className="btn xs" onClick={saveCustomer}>Save to clients</button>
+              <button className="btn xs" onClick={() => setClientSearchOpen((v) => !v)}>{clientSearchOpen ? 'Close search' : '🔍 Find existing client'}</button>
             </div>
           </div>
-          {customers.length > 0 && (
+          {clientSearchOpen && (
             <div className="client-search">
               <input
-                placeholder="🔍 Search existing client to autofill…"
+                autoFocus
+                placeholder="Type a client name to search saved clients…"
                 value={clientQuery}
                 onChange={(e) => { setClientQuery(e.target.value); setClientOpen(true); }}
                 onFocus={() => setClientOpen(true)}
-                onBlur={() => setTimeout(() => setClientOpen(false), 150)}
               />
               {clientOpen && clientQuery.trim() && (
                 <div className="client-dropdown">
                   {customers
                     .filter((c) => c.name.toLowerCase().includes(clientQuery.trim().toLowerCase()))
-                    .slice(0, 8)
+                    .slice(0, 10)
                     .map((c) => (
-                      <button key={c.id} className="client-opt" onMouseDown={() => { applyCustomer(c.id); setClientQuery(''); setClientOpen(false); }}>
-                        <b>{c.name}</b>{c.gstn ? <span> · {c.gstn}</span> : null}{c.contactPhone ? <span> · {c.contactPhone}</span> : null}
+                      <button key={c.id} className="client-opt" onClick={() => { applyCustomer(c.id); setClientQuery(''); setClientOpen(false); setClientSearchOpen(false); }}>
+                        <b>{c.name}</b>{c.gstn ? <span> · {c.gstn}</span> : null}{c.contactPhone ? <span> · {c.contactPhone}</span> : null}{c.addressLines?.[0] ? <span> · {c.addressLines[0]}</span> : null}
                       </button>
                     ))}
                   {customers.filter((c) => c.name.toLowerCase().includes(clientQuery.trim().toLowerCase())).length === 0 && (
-                    <div className="client-opt empty">No match — fill the fields below to add a new client.</div>
+                    <div className="client-opt empty">No saved client matches — just fill the fields below for a new client.</div>
                   )}
                 </div>
               )}
@@ -445,7 +492,7 @@ export default function InvoiceEditor() {
             <span className="theme-name">{THEME_LIST.find((t) => t.key === inv.theme)?.name}</span>
           </div>
           <div className="actions">
-            <button className="btn primary" onClick={persist} disabled={saving}>{saving ? 'Saving…' : (savedId ? 'Update' : 'Save')}</button>
+            <button className="btn primary" onClick={savedId ? persist : saveAndNew} disabled={saving}>{saving ? 'Saving…' : (savedId ? 'Update' : 'Save & New')}</button>
             <button className="btn" onClick={doPrint}>Print</button>
             <button className="btn" onClick={() => doExport('pdf')} disabled={busy === 'pdf'}>{busy === 'pdf' ? '…' : 'PDF'}</button>
             <button className="btn" onClick={() => doExport('docx')} disabled={busy === 'docx'}>{busy === 'docx' ? '…' : 'Word'}</button>

@@ -4,10 +4,27 @@
 import 'dotenv/config';
 import { prisma } from './db.js';
 
+export async function ensureDefaultSeries(settings) {
+  const count = await prisma.invoiceSeries.count();
+  if (count === 0) {
+    await prisma.invoiceSeries.create({
+      data: {
+        name: 'Default',
+        prefix: settings?.invoicePrefix || 'BA/TR/PS-',
+        nextSeq: settings?.nextInvoiceSeq || 22,
+        padWidth: 4,
+        isDefault: true,
+      },
+    });
+    console.log('[seed] Default invoice series created.');
+  }
+}
+
 export async function seed() {
   const existing = await prisma.companySettings.findUnique({ where: { id: 1 } });
   if (existing) {
     console.log('[seed] CompanySettings already present — skipping.');
+    await ensureDefaultSeries(existing);
     return existing;
   }
 
@@ -44,6 +61,7 @@ export async function seed() {
     },
   });
   console.log('[seed] CompanySettings created.');
+  await ensureDefaultSeries(settings);
   return settings;
 }
 

@@ -6,6 +6,12 @@ import { formatINR } from '../utils/money.js';
 
 const blankClient = { name: '', addressLines: [], contactPerson: '', contactPhone: '', email: '', gstn: '', stateCode: '' };
 
+function fmtDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  return `${String(dt.getDate()).padStart(2, '0')}.${String(dt.getMonth() + 1).padStart(2, '0')}.${dt.getFullYear()}`;
+}
+
 export default function Clients() {
   const nav = useNavigate();
   const { settings } = useSettings();
@@ -14,7 +20,8 @@ export default function Clients() {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
-  const [sort, setSort] = useState('name');
+  const [sort, setSort] = useState({ key: 'name', dir: 'asc' });
+  const [sel, setSel] = useState(() => new Set());
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState(blankClient);
   const [busy, setBusy] = useState(false);
@@ -25,28 +32,46 @@ export default function Clients() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
+  const sortBy = (key) => setSort((s) => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }));
+  const arrow = (key) => (sort.key === key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : '');
+
   const view = useMemo(() => {
-    let list = clients.filter((c) =>
+    const filtered = clients.filter((c) =>
       !q.trim() ||
       c.name.toLowerCase().includes(q.toLowerCase()) ||
       (c.gstn || '').toLowerCase().includes(q.toLowerCase()) ||
       (c.contactPhone || '').includes(q));
-    list = [...list].sort((a, b) => {
-      if (sort === 'name') return a.name.localeCompare(b.name);
-      if (sort === 'invoices') return (b.invoiceCount || 0) - (a.invoiceCount || 0);
-      if (sort === 'billed') return (b.totalBilled || 0) - (a.totalBilled || 0);
-      return 0;
-    });
-    return list;
+    const dir = sort.dir === 'asc' ? 1 : -1;
+    const val = (c) => {
+      switch (sort.key) {
+        case 'name': return c.name.toLowerCase();
+        case 'added': return new Date(c.createdAt).getTime();
+        case 'invoices': return c.invoiceCount || 0;
+        case 'billed': return c.totalBilled || 0;
+        default: return 0;
+      }
+    };
+    return [...filtered].sort((a, b) => (val(a) < val(b) ? -1 : val(a) > val(b) ? 1 : 0) * dir);
   }, [clients, q, sort]);
+
+  const allSelected = view.length > 0 && view.every((c) => sel.has(c.id));
+  const toggle = (id) => setSel((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleAll = () => setSel(allSelected ? new Set() : new Set(view.map((c) => c.id)));
 
   const addClient = async () => {
     if (!form.name.trim()) return;
     setBusy(true);
+    try { await api.createCustomer(form); setForm(blankClient); setAdding(false); await load(); }
+    catch (e) { alert(e.message); } finally { setBusy(false); }
+  };
+
+  const bulkDelete = async () => {
+    if (sel.size === 0) return;
+    if (!confirm(`Delete ${sel.size} selected client(s)? Their invoices stay in records.`)) return;
+    setBusy(true);
     try {
-      await api.createCustomer(form);
-      setForm(blankClient);
-      setAdding(false);
+      for (const id of sel) await api.deleteCustomer(id);
+      setSel(new Set());
       await load();
     } catch (e) { alert(e.message); } finally { setBusy(false); }
   };
@@ -56,7 +81,7 @@ export default function Clients() {
       <header className="page-head">
         <div>
           <h1>Clients</h1>
-          <p className="subtle">All customers you've billed — search, sort and open for full history.</p>
+          <p className="subtle">All customers you've billed — sort by any column, search, select in bulk.</p>
         </div>
         <button className="btn primary" onClick={() => setAdding((v) => !v)}>{adding ? 'Cancel' : '+ Add client'}</button>
       </header>
@@ -77,13 +102,11 @@ export default function Clients() {
         </div>
       )}
 
-      <div className="toolbar" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+      <div className="toolbar" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         <input className="search" placeholder="Search name, GSTIN, phone…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select value={sort} onChange={(e) => setSort(e.target.value)} style={{ width: 'auto' }}>
-          <option value="name">Sort: Name</option>
-          <option value="invoices">Sort: Most invoices</option>
-          <option value="billed">Sort: Highest billed</option>
-        </select>
+        {sel.size > 0 && (
+          <button className="btn danger" disabled={busy} onClick={bulkDelete}>Delete selected ({sel.size})</button>
+        )}
       </div>
 
       <div className="card table-card">
@@ -91,13 +114,25 @@ export default function Clients() {
           <div className="empty"><p>No clients yet. They're added automatically when you raise an invoice, or add one above.</p></div>
         ) : (
           <table className="data-table">
-            <thead><tr><th>Name</th><th>GSTIN</th><th>Phone</th><th className="r">Invoices</th><th className="r">Total Billed</th></tr></thead>
+            <thead>
+              <tr>
+                <th style={{ width: 36 }}><input type="checkbox" checked={allSelected} onChange={toggleAll} /></th>
+                <th className="sortable" onClick={() => sortBy('name')}>Name{arrow('name')}</th>
+                <th>GSTIN</th>
+                <th>Phone</th>
+                <th className="sortable" onClick={() => sortBy('added')}>Added{arrow('added')}</th>
+                <th className="r sortable" onClick={() => sortBy('invoices')}>Invoices{arrow('invoices')}</th>
+                <th className="r sortable" onClick={() => sortBy('billed')}>Total Billed{arrow('billed')}</th>
+              </tr>
+            </thead>
             <tbody>
               {view.map((c) => (
                 <tr key={c.id} className="row-click" onClick={() => nav(`/clients/${c.id}`)}>
+                  <td onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={sel.has(c.id)} onChange={() => toggle(c.id)} /></td>
                   <td className="strong">{c.name}</td>
                   <td className="mono">{c.gstn || '—'}</td>
                   <td>{c.contactPhone || '—'}</td>
+                  <td>{fmtDate(c.createdAt)}</td>
                   <td className="r">{c.invoiceCount || 0}</td>
                   <td className="r strong">{sym} {formatINR(c.totalBilled || 0)}</td>
                 </tr>

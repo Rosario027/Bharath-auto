@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { useSettings } from '../App.jsx';
 import InvoicePreview from '../components/InvoicePreview.jsx';
@@ -22,8 +22,25 @@ export default function Settings() {
   const [form, setForm] = useState(settings);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
+  const [series, setSeries] = useState([]);
 
   const flash = (msg, kind = 'ok') => { setToast({ msg, kind }); setTimeout(() => setToast(null), 3000); };
+
+  const loadSeries = () => api.listSeries().then(setSeries).catch(() => {});
+  useEffect(() => { loadSeries(); }, []);
+
+  const patchSeries = (id, patch) => setSeries((p) => p.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  const addSeries = async () => {
+    try { await api.createSeries({ name: 'New Series', prefix: 'INV-', nextSeq: 1 }); await loadSeries(); flash('Series added'); }
+    catch (e) { flash(e.message, 'err'); }
+  };
+  const removeSeries = async (id) => {
+    if (!confirm('Delete this series?')) return;
+    try { await api.deleteSeries(id); await loadSeries(); } catch (e) { flash(e.message, 'err'); }
+  };
+  const makeDefault = async (id) => {
+    try { await api.updateSeries(id, { isDefault: true }); await loadSeries(); } catch (e) { flash(e.message, 'err'); }
+  };
 
   // update local form + propagate to app-wide settings for live reflect
   const set = (patch) => {
@@ -48,13 +65,16 @@ export default function Settings() {
       const saved = await api.saveSettings(form);
       setSettings(saved);
       setForm(saved);
+      // persist any series edits (name/prefix/nextSeq)
+      await Promise.all(series.map((s) => api.updateSeries(s.id, { name: s.name, prefix: s.prefix, nextSeq: s.nextSeq, padWidth: s.padWidth })));
+      await loadSeries();
       flash('Settings saved');
     } catch (e) { flash(e.message, 'err'); }
     finally { setSaving(false); }
   };
 
   const sample = useMemo(() => ({
-    invoiceNo: `${form.invoicePrefix}${String(form.nextInvoiceSeq).padStart(4, '0')}`,
+    invoiceNo: series[0] ? `${series[0].prefix}${String(series[0].nextSeq).padStart(series[0].padWidth || 4, '0')}` : `${form.invoicePrefix}${String(form.nextInvoiceSeq).padStart(4, '0')}`,
     invoiceDate: new Date().toISOString(),
     title: form.invoiceTitle,
     copyType: form.invoiceCopy,
@@ -71,7 +91,7 @@ export default function Settings() {
       { description: 'Atomberg Studio Pedestal Fan 400mm - Sno White', hsnCode: '84145120', qty: 1, unit: 'Nos', price: 3010, gstRate: form.defaultGstRate ?? 18 },
       { description: 'Installation & commissioning charges', hsnCode: '9954', qty: 1, unit: 'Nos', price: 500, gstRate: form.defaultGstRate ?? 18 },
     ],
-  }), [form]);
+  }), [form, series]);
 
   return (
     <div className="settings">
@@ -116,8 +136,6 @@ export default function Settings() {
           <div className="grid2">
             <label>Invoice Title<input value={form.invoiceTitle} onChange={(e) => set({ invoiceTitle: e.target.value })} /></label>
             <label>Copy Label<input value={form.invoiceCopy} onChange={(e) => set({ invoiceCopy: e.target.value })} /></label>
-            <label>Invoice Prefix<input value={form.invoicePrefix} onChange={(e) => set({ invoicePrefix: e.target.value })} /></label>
-            <label>Next Sequence<input type="number" value={form.nextInvoiceSeq} onChange={(e) => set({ nextInvoiceSeq: Number(e.target.value) })} /></label>
             <label>Currency Symbol<input value={form.currencySymbol} onChange={(e) => set({ currencySymbol: e.target.value })} /></label>
             <label>Default Theme
               <div className="theme-picker">
@@ -127,6 +145,24 @@ export default function Settings() {
               </div>
             </label>
           </div>
+        </section>
+
+        <section className="fsec">
+          <div className="fsec-head">
+            <h3>Invoice Number Series</h3>
+            <button className="btn xs" onClick={addSeries}>+ Add series</button>
+          </div>
+          <p className="subtle" style={{ fontSize: 12, marginTop: 0 }}>The next number auto-increments and is never reused (deleted invoices keep their number). Pick the active series per invoice from the editor's Series dropdown.</p>
+          {series.map((s) => (
+            <div className="series-row" key={s.id}>
+              <label>Name<input value={s.name} onChange={(e) => patchSeries(s.id, { name: e.target.value })} /></label>
+              <label>Prefix<input value={s.prefix} onChange={(e) => patchSeries(s.id, { prefix: e.target.value })} /></label>
+              <label>Next #<input type="number" value={s.nextSeq} onChange={(e) => patchSeries(s.id, { nextSeq: Number(e.target.value) })} /></label>
+              <button className={`btn xs ${s.isDefault ? 'primary' : ''}`} onClick={() => makeDefault(s.id)} title="Set as default series">{s.isDefault ? '★ Default' : 'Make default'}</button>
+              <button className="btn xs danger" disabled={series.length <= 1} onClick={() => removeSeries(s.id)}>✕</button>
+            </div>
+          ))}
+          <div className="subtle" style={{ fontSize: 12, marginTop: 8 }}>Preview next: <b>{series.map((s) => `${s.prefix}${String(s.nextSeq).padStart(s.padWidth || 4, '0')}`).join(', ') || '—'}</b></div>
         </section>
 
         <section className="fsec">

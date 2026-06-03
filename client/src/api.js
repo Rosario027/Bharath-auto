@@ -23,10 +23,16 @@ export const api = {
   // invoices
   listInvoices: (q = '') => req(`/invoices${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   getInvoice: (id) => req(`/invoices/${id}`),
-  nextNumber: () => req('/invoices/next-number'),
+  nextNumber: (seriesId) => req(`/invoices/next-number${seriesId ? `?seriesId=${seriesId}` : ''}`),
   createInvoice: (data) => req('/invoices', { method: 'POST', body: JSON.stringify(data) }),
   updateInvoice: (id, data) => req(`/invoices/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteInvoice: (id) => req(`/invoices/${id}`, { method: 'DELETE' }),
+
+  // invoice series
+  listSeries: () => req('/series'),
+  createSeries: (data) => req('/series', { method: 'POST', body: JSON.stringify(data) }),
+  updateSeries: (id, data) => req(`/series/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteSeries: (id) => req(`/series/${id}`, { method: 'DELETE' }),
 
   // customers / clients
   listCustomers: () => req('/customers'),
