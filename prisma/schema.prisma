@@ -138,12 +138,26 @@ model Invoice {
   // Presentation
   theme  String  @default("orange")
   notes  String  @default("")
-  status String  @default("draft") // draft | finalized
+  status String  @default("draft") // draft | finalized | deleted
+
+  // Edit tracking
+  editCount    Int       @default(0)
+  lastEditedAt DateTime?
 
   items InvoiceItem[]
+  edits InvoiceEdit[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Append-only edit history for an invoice (shown as the "edit log").
+model InvoiceEdit {
+  id        Int      @id @default(autoincrement())
+  invoiceId Int
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  changedAt DateTime @default(now())
+  summary   String
 }
 
 model InvoiceItem {

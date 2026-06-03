@@ -56,7 +56,10 @@ router.get('/:id', async (req, res, next) => {
   try {
     const invoice = await prisma.invoice.findUnique({
       where: { id: Number(req.params.id) },
-      include: { items: { orderBy: { slNo: 'asc' } } },
+      include: {
+        items: { orderBy: { slNo: 'asc' } },
+        edits: { orderBy: { changedAt: 'desc' } },
+      },
     });
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
     res.json(invoice);
@@ -64,6 +67,16 @@ router.get('/:id', async (req, res, next) => {
     next(e);
   }
 });
+
+// Build a short human-readable summary of what changed in an edit.
+function buildEditSummary(oldInv, newScalar, newItems, newTotals) {
+  const parts = [];
+  if ((oldInv.buyerName || '') !== (newScalar.buyerName || '')) parts.push(`Customer → ${newScalar.buyerName || '—'}`);
+  if (oldInv.items.length !== newItems.length) parts.push(`Items ${oldInv.items.length} → ${newItems.length}`);
+  if (Math.round(oldInv.grandTotal) !== Math.round(newTotals.grandTotal)) parts.push(`Total ${Math.round(oldInv.grandTotal)} → ${Math.round(newTotals.grandTotal)}`);
+  if ((oldInv.taxMode || '') !== (newScalar.taxMode || '')) parts.push(`Tax ${oldInv.taxMode} → ${newScalar.taxMode}`);
+  return parts.length ? parts.join(' · ') : 'Details updated';
+}
 
 function normalizeItems(items = [], defaultGstRate = 18) {
   return items
@@ -192,6 +205,11 @@ router.put('/:id', async (req, res, next) => {
     const items = normalizeItems(body.items, settings.defaultGstRate);
     const totals = computeTotals({ ...body, items });
 
+    const existing = await prisma.invoice.findUnique({ where: { id }, include: { items: true } });
+    if (!existing) return res.status(404).json({ error: 'Invoice not found' });
+    const scalar = buildScalarData(body, totals, settings);
+    const summary = buildEditSummary(existing, scalar, items, totals);
+
     const updated = await prisma.$transaction(async (tx) => {
       await tx.invoiceItem.deleteMany({ where: { invoiceId: id } });
       const customerId = await resolveCustomerId(tx, body);
@@ -199,11 +217,17 @@ router.put('/:id', async (req, res, next) => {
         where: { id },
         data: {
           ...(body.invoiceNo ? { invoiceNo: body.invoiceNo.trim() } : {}),
-          ...buildScalarData(body, totals, settings),
+          ...scalar,
           customerId,
+          editCount: (existing.editCount || 0) + 1,
+          lastEditedAt: new Date(),
           items: { create: items },
+          edits: { create: { summary } },
         },
-        include: { items: { orderBy: { slNo: 'asc' } } },
+        include: {
+          items: { orderBy: { slNo: 'asc' } },
+          edits: { orderBy: { changedAt: 'desc' } },
+        },
       });
     });
 
@@ -221,7 +245,7 @@ router.delete('/:id', async (req, res, next) => {
   try {
     const updated = await prisma.invoice.update({
       where: { id: Number(req.params.id) },
-      data: { status: 'deleted' },
+      data: { status: 'deleted', edits: { create: { summary: 'Invoice marked as deleted' } } },
     });
     res.json({ ok: true, invoice: updated });
   } catch (e) {

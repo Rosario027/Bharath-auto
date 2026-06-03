@@ -274,6 +274,13 @@ textarea { resize: vertical; }
 .row-deleted .badge.deleted { background: #f1f3f5; color: #98a2b3; }
 input[readonly] { background: #f6f8fa; color: var(--muted); cursor: not-allowed; }
 .badge.deleted { background: #f1f3f5; color: #98a2b3; }
+.badge.edited { background: #eef2ff; color: #4f5bd5; margin-left: 6px; }
+
+/* Edit log */
+.edit-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.edit-log li { display: flex; gap: 12px; align-items: baseline; font-size: 12.5px; padding: 7px 10px; background: #fafbfc; border: 1px solid var(--line); border-radius: 8px; }
+.el-time { color: var(--muted); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 120px; }
+.el-sum { color: var(--ink); }
 
 /* Invoice series manager (settings) */
 .series-row { display: grid; grid-template-columns: 1.4fr 1.4fr 0.8fr auto auto; gap: 8px; align-items: end; padding: 8px 0; border-bottom: 1px dashed var(--line); }

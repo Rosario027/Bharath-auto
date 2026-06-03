@@ -43,6 +43,14 @@ function newItem(settings) {
   return { description: '', hsnCode: '', qty: 1, unit: 'Nos', price: 0, gstRate: settings?.defaultGstRate ?? 18, gstInclusive: false };
 }
 
+function fmtDateTime(d) {
+  const dt = new Date(d);
+  if (isNaN(dt)) return '';
+  const date = `${String(dt.getDate()).padStart(2, '0')}.${String(dt.getMonth() + 1).padStart(2, '0')}.${dt.getFullYear()}`;
+  const time = dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  return `${date} ${time}`;
+}
+
 function lineTaxable(it) {
   const gross = (Number(it.qty) || 0) * (Number(it.price) || 0);
   const r = Number(it.gstRate) || 0;
@@ -332,7 +340,8 @@ export default function InvoiceEditor() {
       <div className="editor-form">
         <div className="form-head">
           <button className="btn ghost" onClick={() => nav('/')}>&larr; Back</button>
-          <h2>{isEdit ? `Edit ${inv.invoiceNo}` : 'New Invoice'}</h2>
+          <h2>{savedId ? `Edit ${inv.invoiceNo}` : 'New Invoice'}</h2>
+          {inv.editCount > 0 && <span className="badge edited" title={`Edited ${inv.editCount} time(s)`}>edited ×{inv.editCount}</span>}
         </div>
 
         {/* Sale type — drives CGST+SGST vs IGST across the whole invoice */}
@@ -472,6 +481,20 @@ export default function InvoiceEditor() {
           <h3>Notes (internal)</h3>
           <textarea rows={2} value={inv.notes} onChange={(e) => set({ notes: e.target.value })} />
         </section>
+
+        {inv.edits && inv.edits.length > 0 && (
+          <section className="fsec">
+            <h3>Edit Log <span className="hint">{inv.edits.length} change(s)</span></h3>
+            <ul className="edit-log">
+              {inv.edits.map((e) => (
+                <li key={e.id}>
+                  <span className="el-time">{fmtDateTime(e.changedAt)}</span>
+                  <span className="el-sum">{e.summary}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
 
       {/* ── Right: preview + actions ── */}

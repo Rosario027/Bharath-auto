@@ -116,9 +116,13 @@ export default function Dashboard() {
                   <td>{fmtDate(inv.invoiceDate)}</td>
                   <td>{inv.buyerName}</td>
                   <td className="r strong">{sym} {formatINR(inv.grandTotal)}</td>
-                  <td><span className={`badge ${inv.status}`}>{inv.status}</span></td>
+                  <td>
+                    <span className={`badge ${inv.status}`}>{inv.status}</span>
+                    {inv.editCount > 0 && <span className="badge edited" title={`Edited ${inv.editCount} time(s)`}>edited{inv.editCount > 1 ? ` ×${inv.editCount}` : ''}</span>}
+                  </td>
                   <td className="r" onClick={(e) => e.stopPropagation()}>
                     <div className="row-actions">
+                      <button className="btn xs" onClick={() => nav(`/invoice/${inv.id}`)}>Edit</button>
                       <button className="btn xs" disabled={busy === inv.id + 'pdf'} onClick={() => download(inv, 'pdf')}>PDF</button>
                       <button className="btn xs" disabled={busy === inv.id + 'docx'} onClick={() => download(inv, 'docx')}>Word</button>
                       {!deleted && <button className="btn xs danger" disabled={busy === inv.id} onClick={() => remove(inv)}>✕</button>}
