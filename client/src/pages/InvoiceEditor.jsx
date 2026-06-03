@@ -219,8 +219,13 @@ export default function InvoiceEditor() {
     try {
       const payload = { ...inv };
       let result;
-      if (savedId) result = await api.updateInvoice(savedId, payload);
-      else result = await api.createInvoice(payload);
+      if (savedId) {
+        result = await api.updateInvoice(savedId, payload);
+      } else {
+        // Let the series generate & advance the number; the field is just a preview.
+        delete payload.invoiceNo;
+        result = await api.createInvoice(payload);
+      }
       setSavedId(result.id);
       setInv(toForm(result));
       if (!isEdit) window.history.replaceState(null, '', `/invoice/${result.id}`);

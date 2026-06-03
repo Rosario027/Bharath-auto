@@ -9,21 +9,35 @@ function pad(n, width = 4) {
   return String(n).padStart(width, '0');
 }
 
-async function resolveSeries(seriesId) {
+async function resolveSeries(client, seriesId) {
   if (seriesId) {
-    const s = await prisma.invoiceSeries.findUnique({ where: { id: Number(seriesId) } });
+    const s = await client.invoiceSeries.findUnique({ where: { id: Number(seriesId) } });
     if (s) return s;
   }
-  return (await prisma.invoiceSeries.findFirst({ where: { isDefault: true } }))
-    || (await prisma.invoiceSeries.findFirst());
+  return (await client.invoiceSeries.findFirst({ where: { isDefault: true } }))
+    || (await client.invoiceSeries.findFirst());
+}
+
+// Find the next FREE number for a series, starting at its nextSeq. Skips any
+// numbers already taken (self-heals gaps from past data) without consuming.
+async function computeFreeNumber(client, series) {
+  let seq = series.nextSeq;
+  for (let i = 0; i < 100000; i++) {
+    const candidate = `${series.prefix}${pad(seq, series.padWidth)}`;
+    const exists = await client.invoice.findUnique({ where: { invoiceNo: candidate } });
+    if (!exists) return { invoiceNo: candidate, seq };
+    seq += 1;
+  }
+  return { invoiceNo: `${series.prefix}${pad(series.nextSeq, series.padWidth)}`, seq: series.nextSeq };
 }
 
 // Build a preview invoice number without consuming the sequence.
 router.get('/next-number', async (req, res, next) => {
   try {
-    const s = await resolveSeries(req.query.seriesId);
+    const s = await resolveSeries(prisma, req.query.seriesId);
     if (!s) return res.json({ invoiceNo: '' });
-    res.json({ invoiceNo: `${s.prefix}${pad(s.nextSeq, s.padWidth)}`, seriesId: s.id });
+    const { invoiceNo } = await computeFreeNumber(prisma, s);
+    res.json({ invoiceNo, seriesId: s.id });
   } catch (e) {
     next(e);
   }
@@ -159,20 +173,22 @@ router.post('/', async (req, res, next) => {
     const items = normalizeItems(body.items, settings.defaultGstRate);
     const totals = computeTotals({ ...body, items });
 
-    const series = await resolveSeries(body.seriesId);
-
-    // Manual number supplied → use as-is (uniqueness enforced below).
-    // Otherwise auto-generate from the chosen series and consume its sequence.
     const manualNo = (body.invoiceNo || '').trim();
-    let invoiceNo = manualNo;
-    let consumeSeries = false;
-    if (!invoiceNo && series) {
-      invoiceNo = `${series.prefix}${pad(series.nextSeq, series.padWidth)}`;
-      consumeSeries = true;
-    }
 
     const created = await prisma.$transaction(async (tx) => {
       const customerId = await resolveCustomerId(tx, body);
+      const series = await resolveSeries(tx, body.seriesId);
+
+      // Manual number → use as-is (uniqueness enforced). Otherwise auto-generate
+      // the next free number from the series and advance its sequence past it.
+      let invoiceNo = manualNo;
+      let advanceTo = null;
+      if (!invoiceNo && series) {
+        const free = await computeFreeNumber(tx, series);
+        invoiceNo = free.invoiceNo;
+        advanceTo = free.seq + 1;
+      }
+
       const inv = await tx.invoice.create({
         data: {
           invoiceNo,
@@ -183,8 +199,8 @@ router.post('/', async (req, res, next) => {
         },
         include: { items: { orderBy: { slNo: 'asc' } } },
       });
-      if (consumeSeries) {
-        await tx.invoiceSeries.update({ where: { id: series.id }, data: { nextSeq: series.nextSeq + 1 } });
+      if (advanceTo != null) {
+        await tx.invoiceSeries.update({ where: { id: series.id }, data: { nextSeq: advanceTo } });
       }
       return inv;
     });
