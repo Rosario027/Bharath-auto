@@ -67,6 +67,19 @@
 .l3-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 16px 34px rgba(47,125,50,.42), 0 0 26px rgba(125,192,78,.4); }
 .l3-btn:disabled { opacity: .5; cursor: default; box-shadow: none; }
 
+/* daily Thirukkural at the bottom center */
+.login3-quote {
+  position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 4;
+  text-align: center; max-width: min(780px, 92vw); padding: 12px 20px;
+  background: rgba(255,255,255,.45); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.6);
+  border-radius: 18px; box-shadow: 0 10px 30px rgba(20,33,15,.08);
+}
+.lq-heading { font-size: 10.5px; letter-spacing: 2px; text-transform: uppercase; color: #5B9B36; font-weight: 800; margin-bottom: 6px; }
+.lq-text { font-size: 16px; font-weight: 700; color: #16240f; line-height: 1.55; font-family: 'Noto Sans Tamil', 'Latha', 'Inter', sans-serif; }
+.lq-meaning { font-size: 12.5px; color: #5d6b54; font-style: italic; margin-top: 7px; line-height: 1.4; }
+.lq-note { font-size: 12px; color: #7b8696; margin-top: 6px; }
+@media (max-width: 880px) { .login3-quote { position: static; transform: none; margin: 18px auto 6px; } }
+
 /* figure animations */
 .med-figure { animation: bob 6s ease-in-out infinite; transform-origin: 210px 320px; }
 @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }

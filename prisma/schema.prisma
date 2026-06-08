@@ -59,7 +59,23 @@ model CompanySettings {
   currency     String  @default("INR")
   currencySymbol String @default("₹")
 
+  // Login screen content (editable by admin, shown to everyone)
+  loginNote   String  @default("")
+  loginHeading String @default("Thirukkural")
+  showLoginQuote Boolean @default(true)
+
   updatedAt DateTime @updatedAt
+}
+
+// Rotating login-screen quotes (Thirukkural). One is shown per day,
+// deterministically, so every user sees the same quote that day.
+model LoginQuote {
+  id        Int      @id @default(autoincrement())
+  text      String   // couplet — two lines separated by \n
+  meaning   String   @default("")
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
 }
 
 // ──────────────────────────────────────────────────────────────

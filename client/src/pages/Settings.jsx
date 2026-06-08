@@ -29,6 +29,23 @@ export default function Settings() {
   const loadSeries = () => api.listSeries().then(setSeries).catch(() => {});
   useEffect(() => { loadSeries(); }, []);
 
+  // Login screen content (Thirukkural)
+  const [quotes, setQuotes] = useState([]);
+  const [schedule, setSchedule] = useState([]);
+  const loadQuotes = () => api.listLoginQuotes().then((r) => { setQuotes(r.quotes); setSchedule(r.schedule); }).catch(() => {});
+  useEffect(() => { loadQuotes(); }, []);
+  const patchQuote = (id, patch) => setQuotes((p) => p.map((q) => (q.id === id ? { ...q, ...patch } : q)));
+  const addQuote = async () => {
+    try { await api.createLoginQuote({ text: 'முதல் வரி\nஇரண்டாம் வரி', meaning: '' }); await loadQuotes(); flash('Quote added'); }
+    catch (e) { flash(e.message, 'err'); }
+  };
+  const removeQuote = async (id) => {
+    if (!confirm('Delete this quote?')) return;
+    try { await api.deleteLoginQuote(id); await loadQuotes(); } catch (e) { flash(e.message, 'err'); }
+  };
+  const firstLine = (id) => { const q = quotes.find((x) => x.id === id); return q ? q.text.split('\n')[0] : '—'; };
+  const schedDate = (ms) => new Date(ms).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' });
+
   const patchSeries = (id, patch) => setSeries((p) => p.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   const addSeries = async () => {
     try { await api.createSeries({ name: 'New Series', prefix: 'INV-', nextSeq: 1 }); await loadSeries(); flash('Series added'); }
@@ -67,7 +84,9 @@ export default function Settings() {
       setForm(saved);
       // persist any series edits (name/prefix/nextSeq)
       await Promise.all(series.map((s) => api.updateSeries(s.id, { name: s.name, prefix: s.prefix, nextSeq: s.nextSeq, padWidth: s.padWidth })));
+      await Promise.all(quotes.map((q) => api.updateLoginQuote(q.id, { text: q.text, meaning: q.meaning, active: q.active })));
       await loadSeries();
+      await loadQuotes();
       flash('Settings saved');
     } catch (e) { flash(e.message, 'err'); }
     finally { setSaving(false); }
@@ -163,6 +182,46 @@ export default function Settings() {
             </div>
           ))}
           <div className="subtle" style={{ fontSize: 12, marginTop: 8 }}>Preview next: <b>{series.map((s) => `${s.prefix}${String(s.nextSeq).padStart(s.padWidth || 4, '0')}`).join(', ') || '—'}</b></div>
+        </section>
+
+        <section className="fsec">
+          <div className="fsec-head">
+            <h3>Login Screen · About</h3>
+            <button className="btn xs" onClick={addQuote}>+ Add quote</button>
+          </div>
+          <p className="subtle" style={{ fontSize: 12, marginTop: 0 }}>Quotes (Thirukkural) rotate automatically — one per day, same for everyone. Changes here reflect on every user's login screen.</p>
+          <div className="grid2">
+            <label>Heading<input value={form.loginHeading || ''} onChange={(e) => set({ loginHeading: e.target.value })} /></label>
+            <label>Show daily quote
+              <select value={form.showLoginQuote === false ? 'no' : 'yes'} onChange={(e) => set({ showLoginQuote: e.target.value === 'yes' })}>
+                <option value="yes">Yes</option><option value="no">No</option>
+              </select>
+            </label>
+            <label className="full">Static note (always shown)<input value={form.loginNote || ''} placeholder="e.g. Together for a productive day" onChange={(e) => set({ loginNote: e.target.value })} /></label>
+          </div>
+
+          <div className="quotes-list">
+            {quotes.map((q) => (
+              <div className={`quote-row ${q.active ? '' : 'off'}`} key={q.id}>
+                <textarea className="q-text" rows={2} value={q.text} placeholder={'Line 1\nLine 2'} onChange={(e) => patchQuote(q.id, { text: e.target.value })} />
+                <input className="q-mean" value={q.meaning} placeholder="Meaning (English)" onChange={(e) => patchQuote(q.id, { meaning: e.target.value })} />
+                <label className="q-active"><input type="checkbox" checked={q.active} onChange={(e) => patchQuote(q.id, { active: e.target.checked })} /> Active</label>
+                <button className="btn xs danger" onClick={() => removeQuote(q.id)}>✕</button>
+              </div>
+            ))}
+          </div>
+
+          {schedule.length > 0 && (
+            <div className="sched">
+              <div className="sched-head">Upcoming schedule</div>
+              {schedule.map((s) => (
+                <div className="sched-row" key={s.dayOffset}>
+                  <span className="sched-date">{s.dayOffset === 0 ? 'Today' : schedDate(s.dateMs)}</span>
+                  <span className="sched-q">{s.quoteId ? firstLine(s.quoteId) : '—'}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="fsec">

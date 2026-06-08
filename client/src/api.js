@@ -43,6 +43,15 @@ export const api = {
   // auth
   login: (username, password) => req('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
 
+  // public login-screen content
+  getLoginContent: () => req('/public/login-content'),
+
+  // login quotes (admin)
+  listLoginQuotes: () => req('/login-quotes'),
+  createLoginQuote: (data) => req('/login-quotes', { method: 'POST', body: JSON.stringify(data) }),
+  updateLoginQuote: (id, data) => req(`/login-quotes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteLoginQuote: (id) => req(`/login-quotes/${id}`, { method: 'DELETE' }),
+
   // settings
   getSettings: () => req('/settings'),
   saveSettings: (data) => req('/settings', { method: 'PUT', body: JSON.stringify(data) }),

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, setAuth } from '../api.js';
 
 function greeting() {
@@ -50,6 +50,9 @@ export default function Login({ onLogin }) {
   const [show, setShow] = useState(false);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [content, setContent] = useState(null);
+
+  useEffect(() => { api.getLoginContent().then(setContent).catch(() => {}); }, []);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -102,6 +105,20 @@ export default function Login({ onLogin }) {
         {/* calm figure — to the right, clearly visible */}
         <div className="login3-art"><MeditationArt /></div>
       </div>
+
+      {/* daily Thirukkural / static note at the bottom center */}
+      {content && (content.showQuote || content.note) && (
+        <div className="login3-quote">
+          {content.showQuote && content.quote && (
+            <>
+              <div className="lq-heading">{content.heading || 'Thirukkural'} · குறள்</div>
+              <div className="lq-text">{content.quote.text.split('\n').map((ln, i) => <div key={i}>{ln}</div>)}</div>
+              {content.quote.meaning && <div className="lq-meaning">{content.quote.meaning}</div>}
+            </>
+          )}
+          {content.note && <div className="lq-note">{content.note}</div>}
+        </div>
+      )}
     </div>
   );
 }

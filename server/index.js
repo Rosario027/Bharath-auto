@@ -11,6 +11,8 @@ import customersRouter from './routes/customers.js';
 import exportRouter from './routes/export.js';
 import seriesRouter from './routes/series.js';
 import authRouter from './routes/auth.js';
+import publicRouter from './routes/public.js';
+import loginQuotesRouter from './routes/loginQuotes.js';
 import { authRequired, adminRequired } from './lib/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -22,6 +24,8 @@ app.use(express.json({ limit: '8mb' })); // headroom for logo/signature data URL
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
 app.use('/api/auth', authRouter);
+app.use('/api/public', publicRouter);                      // login-screen content (no auth)
+app.use('/api/login-quotes', loginQuotesRouter);           // admin-only (guarded in router)
 app.use('/api/settings', authRequired, settingsRouter);   // GET both; PUT admin-only (guarded in router)
 app.use('/api/invoices', authRequired, invoicesRouter);   // both roles can raise invoices
 app.use('/api/customers', adminRequired, customersRouter); // client data — admin only

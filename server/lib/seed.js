@@ -20,11 +20,33 @@ export async function ensureDefaultSeries(settings) {
   }
 }
 
+const KURALS = [
+  { text: 'அன்பிலார் எல்லாம் தமக்குரியர் அன்புடையார்\nஎன்பும் உரியர் பிறர்க்கு.', meaning: 'The loveless grasp all for themselves; the loving give even their very bones for others.' },
+  { text: 'அன்பின் வழியது உயிர்நிலை அஃதிலார்க்கு\nஎன்புதோல் போர்த்த உடம்பு.', meaning: 'Love is the seat of true life; without it, the body is mere bones wrapped in skin.' },
+  { text: 'நன்றி மறப்பது நன்றன்று நன்றல்லது\nஅன்றே மறப்பது நன்று.', meaning: 'To forget a kindness is not good; to forget an injury that very day is good.' },
+  { text: 'அகழ்வாரைத் தாங்கும் நிலம்போலத் தம்மை\nஇகழ்வார்ப் பொறுத்தல் தலை.', meaning: 'As the earth bears those who dig it, to patiently bear those who scorn you is supreme.' },
+  { text: 'இன்னாசெய் தாரை ஒறுத்தல் அவர்நாண\nநன்னயஞ் செய்து விடல்.', meaning: 'The way to punish those who harm you is to shame them by returning good.' },
+  { text: 'கற்க கசடறக் கற்பவை கற்றபின்\nநிற்க அதற்குத் தக.', meaning: 'Learn thoroughly what is worth learning, and then live by that learning.' },
+  { text: 'எண்ணென்ப ஏனை எழுத்தென்ப இவ்விரண்டும்\nகண்ணென்ப வாழும் உயிர்க்கு.', meaning: 'Number and letter — these two are called the eyes of all living beings.' },
+  { text: 'உள்ளுவ தெல்லாம் உயர்வுள்ளல் மற்றது\nதள்ளினுந் தள்ளாமை நீர்த்து.', meaning: 'Let all your aims be high; such resolve holds firm even when it meets failure.' },
+];
+
+export async function ensureLoginQuotes() {
+  const count = await prisma.loginQuote.count();
+  if (count === 0) {
+    await prisma.loginQuote.createMany({
+      data: KURALS.map((k, i) => ({ text: k.text, meaning: k.meaning, sortOrder: i, active: true })),
+    });
+    console.log('[seed] Thirukkural login quotes created.');
+  }
+}
+
 export async function seed() {
   const existing = await prisma.companySettings.findUnique({ where: { id: 1 } });
   if (existing) {
     console.log('[seed] CompanySettings already present — skipping.');
     await ensureDefaultSeries(existing);
+    await ensureLoginQuotes();
     return existing;
   }
 
@@ -62,6 +84,7 @@ export async function seed() {
   });
   console.log('[seed] CompanySettings created.');
   await ensureDefaultSeries(settings);
+  await ensureLoginQuotes();
   return settings;
 }
 

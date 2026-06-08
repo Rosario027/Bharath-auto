@@ -292,3 +292,16 @@ input[readonly] { background: #f6f8fa; color: var(--muted); cursor: not-allowed;
 .series-row { display: grid; grid-template-columns: 1.4fr 1.4fr 0.8fr auto auto; gap: 8px; align-items: end; padding: 8px 0; border-bottom: 1px dashed var(--line); }
 .series-row label { font-size: 11px; }
 .series-row .default-pill { font-size: 11px; font-weight: 700; }
+
+/* Login quotes manager */
+.quotes-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.quote-row { display: grid; grid-template-columns: 1.4fr 1.4fr auto auto; gap: 10px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: #fcfcfd; }
+.quote-row.off { opacity: .55; }
+.quote-row .q-text { font-family: 'Noto Sans Tamil', 'Latha', inherit; resize: vertical; min-height: 46px; }
+.quote-row .q-active { flex-direction: row; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+.sched { margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 10px; }
+.sched-head { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 700; margin-bottom: 6px; }
+.sched-row { display: flex; gap: 12px; font-size: 12.5px; padding: 3px 0; }
+.sched-date { min-width: 110px; color: var(--muted); font-weight: 600; }
+.sched-q { color: var(--ink); font-family: 'Noto Sans Tamil', 'Latha', inherit; }
+@media (max-width: 700px) { .quote-row { grid-template-columns: 1fr; } }
