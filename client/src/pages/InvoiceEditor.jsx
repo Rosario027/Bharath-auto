@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, exporter } from '../api.js';
-import { useSettings } from '../App.jsx';
+import { useSettings, useAuth } from '../App.jsx';
 import InvoicePreview from '../components/InvoicePreview.jsx';
 import { THEME_LIST } from '../themes.js';
 import { computeTotals } from '../utils/calc.js';
@@ -73,6 +73,7 @@ export default function InvoiceEditor() {
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
   const { settings } = useSettings();
+  const { isAdmin } = useAuth();
   const isEdit = !!id;
 
   const [inv, setInv] = useState(null);
@@ -125,12 +126,11 @@ export default function InvoiceEditor() {
     (async () => {
       let custList = [];
       let seriesList = [];
-      try {
-        [custList, seriesList] = await Promise.all([api.listCustomers(), api.listSeries()]);
-        if (!alive) return;
-        setCustomers(custList);
-        setSeries(seriesList);
-      } catch { /* ignore */ }
+      try { seriesList = await api.listSeries(); if (alive) setSeries(seriesList); } catch { /* ignore */ }
+      // Client data is admin-only — users never fetch it.
+      if (isAdmin) {
+        try { custList = await api.listCustomers(); if (alive) setCustomers(custList); } catch { /* ignore */ }
+      }
 
       if (isEdit) {
         const data = await api.getInvoice(id);
@@ -382,10 +382,10 @@ export default function InvoiceEditor() {
           <div className="fsec-head">
             <h3>Customer <span className="hint">new client — saved automatically</span></h3>
             <div className="fsec-tools">
-              <button className="btn xs" onClick={() => setClientSearchOpen((v) => !v)}>{clientSearchOpen ? 'Close search' : '🔍 Find existing client'}</button>
+              {isAdmin && <button className="btn xs" onClick={() => setClientSearchOpen((v) => !v)}>{clientSearchOpen ? 'Close search' : '🔍 Find existing client'}</button>}
             </div>
           </div>
-          {clientSearchOpen && (
+          {isAdmin && clientSearchOpen && (
             <div className="client-search">
               <input
                 autoFocus

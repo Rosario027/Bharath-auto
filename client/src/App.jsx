@@ -1,16 +1,19 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { Routes, Route, NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { api } from './api.js';
+import { Routes, Route, NavLink, useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { api, setAuth, getStoredUser } from './api.js';
 import Dashboard from './pages/Dashboard.jsx';
 import InvoiceEditor from './pages/InvoiceEditor.jsx';
 import Settings from './pages/Settings.jsx';
 import Clients from './pages/Clients.jsx';
 import ClientDetail from './pages/ClientDetail.jsx';
+import Login from './pages/Login.jsx';
 
 const SettingsContext = createContext(null);
 export const useSettings = () => useContext(SettingsContext);
+const AuthContext = createContext(null);
+export const useAuth = () => useContext(AuthContext);
 
-function TopBar({ onHamburger, view, setView, isMobile }) {
+function TopBar({ onHamburger, view, setView, isMobile, user, onLogout }) {
   return (
     <header className="topbar">
       <button className="hamburger" onClick={onHamburger} aria-label="Toggle menu">☰</button>
@@ -26,11 +29,15 @@ function TopBar({ onHamburger, view, setView, isMobile }) {
         <button className={`vt ${!isMobile ? 'on' : ''}`} onClick={() => setView('web')} title="Desktop layout">🖥</button>
         <button className={`vt ${isMobile ? 'on' : ''}`} onClick={() => setView('mobile')} title="Mobile layout">📱</button>
       </div>
+      <div className="topbar-user">
+        <span className={`user-chip role-${user.role}`}>{user.username} · {user.role}</span>
+        <button className="btn xs ghost-light" onClick={onLogout}>Logout</button>
+      </div>
     </header>
   );
 }
 
-function Sidebar({ open, onNavigate }) {
+function Sidebar({ onNavigate, isAdmin }) {
   const nav = useNavigate();
   const loc = useLocation();
   const invoiceActive = ['/', '/new', '/settings'].includes(loc.pathname);
@@ -43,7 +50,7 @@ function Sidebar({ open, onNavigate }) {
   );
 
   return (
-    <aside className={`sidebar ${open ? 'open' : ''}`}>
+    <aside className="sidebar open">
       <nav>
         <div className="nav-group">
           <button
@@ -58,15 +65,17 @@ function Sidebar({ open, onNavigate }) {
             <div className="nav-sub">
               {sub('/', 'Dashboard', true)}
               {sub('/new', 'New Invoice')}
-              {sub('/settings', 'Invoice Settings')}
+              {isAdmin && sub('/settings', 'Invoice Settings')}
             </div>
           )}
         </div>
 
-        <NavLink to="/clients" onClick={onNavigate} className={({ isActive }) => 'nav-item' + (isActive || loc.pathname.startsWith('/clients') ? ' active' : '')}>
-          <span className="nav-icon">👥</span>
-          <span className="nav-label">Clients</span>
-        </NavLink>
+        {isAdmin && (
+          <NavLink to="/clients" onClick={onNavigate} className={() => 'nav-item' + (loc.pathname.startsWith('/clients') ? ' active' : '')}>
+            <span className="nav-icon">👥</span>
+            <span className="nav-label">Clients</span>
+          </NavLink>
+        )}
       </nav>
       <div className="sidebar-foot"><span className="ver">Bharath Automation · Invoicing v1.0</span></div>
     </aside>
@@ -74,6 +83,7 @@ function Sidebar({ open, onNavigate }) {
 }
 
 export default function App() {
+  const [user, setUser] = useState(() => getStoredUser());
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -90,7 +100,6 @@ export default function App() {
   const isMobile = view === 'mobile' ? true : view === 'web' ? false : autoMobile;
   const setView = (v) => { setViewState(v); try { localStorage.setItem('viewMode', v); } catch { /* ignore */ } };
 
-  // Sidebar open/collapsed. Default: open on desktop, collapsed on mobile.
   const [sidebarOpen, setSidebarOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 900 : true));
 
   const refreshSettings = useCallback(async () => {
@@ -102,34 +111,44 @@ export default function App() {
       setLoading(false);
     }
   }, []);
-  useEffect(() => { refreshSettings(); }, [refreshSettings]);
+  useEffect(() => { if (user) refreshSettings(); }, [user, refreshSettings]);
 
   const updateSettingsLocal = useCallback((patch) => setSettings((prev) => ({ ...prev, ...patch })), []);
 
-  if (loading) return <div className="app-loading">Loading Bharath Automation Invoicing…</div>;
-  if (error) return <div className="app-loading error">Failed to load: {error}</div>;
+  const logout = () => { setAuth(''); setUser(null); setSettings(null); };
 
+  // Not signed in → show the login screen.
+  if (!user) return <Login onLogin={(u) => { setUser(u); setLoading(true); }} />;
+
+  if (loading) return <div className="app-loading">Loading Bharath Automation Invoicing…</div>;
+  if (error) return <div className="app-loading error">Failed to load: {error} <button className="btn" onClick={logout} style={{ marginLeft: 12 }}>Sign out</button></div>;
+
+  const isAdmin = user.role === 'admin';
   const closeOnMobile = () => { if (isMobile) setSidebarOpen(false); };
+  const AdminOnly = ({ children }) => (isAdmin ? children : <Navigate to="/" replace />);
 
   return (
-    <SettingsContext.Provider value={{ settings, setSettings, refreshSettings, updateSettingsLocal }}>
-      <div className={`app-root ${isMobile ? 'is-mobile' : 'is-web'} ${sidebarOpen ? 'sb-open' : 'sb-closed'}`}>
-        <TopBar onHamburger={() => setSidebarOpen((v) => !v)} view={view} setView={setView} isMobile={isMobile} />
-        <div className="app-body">
-          <Sidebar open={sidebarOpen} onNavigate={closeOnMobile} />
-          {isMobile && sidebarOpen && <div className="sb-backdrop" onClick={() => setSidebarOpen(false)} />}
-          <main className="app-main">
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/new" element={<InvoiceEditor key="new" />} />
-              <Route path="/invoice/:id" element={<InvoiceEditor />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/clients" element={<Clients />} />
-              <Route path="/clients/:id" element={<ClientDetail />} />
-            </Routes>
-          </main>
+    <AuthContext.Provider value={{ user, isAdmin, logout }}>
+      <SettingsContext.Provider value={{ settings, setSettings, refreshSettings, updateSettingsLocal }}>
+        <div className={`app-root ${isMobile ? 'is-mobile' : 'is-web'} ${sidebarOpen ? 'sb-open' : 'sb-closed'}`}>
+          <TopBar onHamburger={() => setSidebarOpen((v) => !v)} view={view} setView={setView} isMobile={isMobile} user={user} onLogout={logout} />
+          <div className="app-body">
+            {sidebarOpen && <Sidebar onNavigate={closeOnMobile} isAdmin={isAdmin} />}
+            {isMobile && sidebarOpen && <div className="sb-backdrop" onClick={() => setSidebarOpen(false)} />}
+            <main className="app-main">
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/new" element={<InvoiceEditor key="new" />} />
+                <Route path="/invoice/:id" element={<InvoiceEditor />} />
+                <Route path="/settings" element={<AdminOnly><Settings /></AdminOnly>} />
+                <Route path="/clients" element={<AdminOnly><Clients /></AdminOnly>} />
+                <Route path="/clients/:id" element={<AdminOnly><ClientDetail /></AdminOnly>} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </main>
+          </div>
         </div>
-      </div>
-    </SettingsContext.Provider>
+      </SettingsContext.Provider>
+    </AuthContext.Provider>
   );
 }

@@ -1,10 +1,34 @@
 const API = '/api';
 
+let authToken = '';
+try { authToken = localStorage.getItem('token') || ''; } catch { /* ignore */ }
+
+export function setAuth(token, user) {
+  authToken = token || '';
+  try {
+    if (token) { localStorage.setItem('token', token); localStorage.setItem('user', JSON.stringify(user || {})); }
+    else { localStorage.removeItem('token'); localStorage.removeItem('user'); }
+  } catch { /* ignore */ }
+}
+
+export function getStoredUser() {
+  try { return JSON.parse(localStorage.getItem('user') || 'null'); } catch { return null; }
+}
+
+function authHeaders(extra = {}) {
+  return authToken ? { ...extra, Authorization: `Bearer ${authToken}` } : extra;
+}
+
 async function req(path, opts = {}) {
   const res = await fetch(API + path, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     ...opts,
   });
+  if (res.status === 401 && authToken) {
+    // token expired/invalid — force re-login
+    setAuth('');
+    if (location.pathname !== '/login') location.assign('/login');
+  }
   if (!res.ok) {
     let msg = `Request failed (${res.status})`;
     try { const j = await res.json(); msg = j.error || msg; } catch { /* ignore */ }
@@ -16,6 +40,9 @@ async function req(path, opts = {}) {
 }
 
 export const api = {
+  // auth
+  login: (username, password) => req('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
+
   // settings
   getSettings: () => req('/settings'),
   saveSettings: (data) => req('/settings', { method: 'PUT', body: JSON.stringify(data) }),
@@ -46,7 +73,7 @@ export const api = {
 async function downloadBlob(path, body, fallbackName) {
   const res = await fetch(API + path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Export failed (${res.status})`);
@@ -65,7 +92,7 @@ async function downloadBlob(path, body, fallbackName) {
 }
 
 async function downloadGet(path, fallbackName) {
-  const res = await fetch(API + path);
+  const res = await fetch(API + path, { headers: authHeaders() });
   if (!res.ok) throw new Error(`Export failed (${res.status})`);
   const blob = await res.blob();
   const disp = res.headers.get('content-disposition') || '';

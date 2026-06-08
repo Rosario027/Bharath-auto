@@ -41,6 +41,12 @@ body {
 .view-toggle { display: flex; gap: 3px; background: #0e1217; border: 1px solid #262d36; border-radius: 9px; padding: 3px; }
 .view-toggle .vt { border: none; background: transparent; color: #aeb7c4; font-weight: 600; font-size: 14px; padding: 5px 9px; border-radius: 7px; cursor: pointer; }
 .view-toggle .vt.on { background: var(--brand-orange); color: #fff; }
+.topbar-user { display: flex; align-items: center; gap: 10px; margin-left: 8px; }
+.user-chip { font-size: 12px; font-weight: 700; color: #fff; background: #2c333d; padding: 5px 10px; border-radius: 20px; text-transform: capitalize; }
+.user-chip.role-admin { background: var(--brand-orange); }
+.user-chip.role-user { background: var(--brand-green); }
+.btn.ghost-light { background: transparent; border: 1px solid #2c333d; color: #cfd6e0; }
+.btn.ghost-light:hover { background: #20262f; color: #fff; }
 
 .app-body { display: flex; flex: 1; min-height: 0; }
 

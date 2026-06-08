@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../lib/db.js';
 import { seed } from '../lib/seed.js';
+import { adminRequired } from '../lib/auth.js';
 
 const router = Router();
 
@@ -18,7 +19,7 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.put('/', async (req, res, next) => {
+router.put('/', adminRequired, async (req, res, next) => {
   try {
     await getSettings(); // ensure row exists
     const data = { ...req.body };

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../lib/db.js';
 import { getSettings } from './settings.js';
 import { ensureDefaultSeries } from '../lib/seed.js';
+import { adminRequired } from '../lib/auth.js';
 
 const router = Router();
 
@@ -16,7 +17,7 @@ router.get('/', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', adminRequired, async (req, res, next) => {
   try {
     const b = req.body || {};
     if (!(b.prefix || '').trim()) return res.status(400).json({ error: 'Series prefix is required' });
@@ -35,7 +36,7 @@ router.post('/', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', adminRequired, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const b = req.body || {};
@@ -54,7 +55,7 @@ router.put('/:id', async (req, res, next) => {
   }
 });
 
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', adminRequired, async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const all = await prisma.invoiceSeries.findMany();
