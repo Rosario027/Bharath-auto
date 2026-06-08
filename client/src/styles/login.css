@@ -16,21 +16,24 @@
 @keyframes glowC { 0%,100% { opacity: .4; transform: translateX(-50%) scale(1); } 50% { opacity: .7; transform: translateX(-50%) scale(1.1); } }
 @keyframes glowS { 0%,100% { opacity: .32; transform: scale(1); } 50% { opacity: .6; transform: scale(1.12); } }
 
-.login3-art {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -52%);
-  width: min(660px, 92vw); opacity: .5; filter: saturate(1.05);
+/* two-column scene: card (left) + figure (right) over the full-screen glow */
+.login3-inner {
+  position: relative; z-index: 3; width: min(1120px, 96vw);
+  display: grid; grid-template-columns: minmax(360px, 440px) 1fr; align-items: center; gap: 40px;
 }
+.login3-art { justify-self: center; width: min(560px, 90%); filter: drop-shadow(0 24px 50px rgba(47,125,50,.18)); }
 .login3-art .med-svg { width: 100%; height: auto; display: block; }
 
-/* logo */
-.login3-logo { position: absolute; top: 22px; left: 26px; display: flex; align-items: center; gap: 10px; z-index: 5; }
-.login3-logo img { width: 38px; height: 38px; background: #fff; border-radius: 10px; padding: 4px; box-shadow: 0 4px 14px rgba(0,0,0,.08); }
-.login3-logo span { font-size: 14px; letter-spacing: 1px; color: #5B9B36; font-weight: 700; }
-.login3-logo b { color: #E8732B; }
+/* logo — large */
+.login3-logo { position: absolute; top: 26px; left: 30px; display: flex; align-items: center; gap: 14px; z-index: 6; }
+.login3-logo img { width: 62px; height: 62px; background: #fff; border-radius: 16px; padding: 7px; box-shadow: 0 8px 22px rgba(0,0,0,.10); }
+.l3-brand { display: flex; flex-direction: column; line-height: 1; }
+.l3-brand b { font-size: 26px; font-weight: 900; letter-spacing: .5px; color: #E8732B; }
+.l3-brand i { font-size: 18px; font-style: normal; font-weight: 800; letter-spacing: 5px; color: #5B9B36; }
 
 /* glass card */
 .login3-card {
-  position: relative; z-index: 3; width: min(420px, 94vw);
+  position: relative; z-index: 3; width: 100%;
   background: rgba(255,255,255,.55); backdrop-filter: blur(16px) saturate(1.2);
   border: 1px solid rgba(255,255,255,.85); border-radius: 26px; padding: 44px 38px;
   box-shadow: 0 24px 70px rgba(20,33,15,.16), 0 0 0 1px rgba(125,192,78,.08), 0 0 60px rgba(125,192,78,.18);
@@ -74,8 +77,14 @@
 .leaf3 { animation-duration: 6s; }
 @keyframes floaty { 0%,100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-12px) rotate(12deg); } }
 
+@media (max-width: 880px) {
+  .login3-inner { grid-template-columns: 1fr; justify-items: center; gap: 8px; }
+  .login3-art { order: -1; width: min(360px, 78%); }
+}
 @media (max-width: 560px) {
   .login3-card { padding: 34px 24px; }
   .login3-card h1 { font-size: 32px; }
-  .login3-art { opacity: .35; }
+  .login3-art { width: min(280px, 66%); }
+  .l3-brand b { font-size: 22px; }
+  .l3-brand i { font-size: 15px; }
 }

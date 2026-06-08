@@ -3,9 +3,9 @@ import { api, setAuth } from '../api.js';
 
 function greeting() {
   const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening';
+  if (h < 12) return 'Good morning';        // 12 AM – 11:59 AM
+  if (h < 16) return 'Good afternoon';       // 12 PM – 3:59 PM
+  return 'Good evening';                      // 4 PM – 11:59 PM
 }
 
 function MeditationArt() {
@@ -67,37 +67,41 @@ export default function Login({ onLogin }) {
 
   return (
     <div className="login3">
-      {/* full-screen calm wallpaper */}
+      {/* full-screen glow wallpaper */}
       <div className="login3-bg">
         <span className="glow glow-green" />
         <span className="glow glow-saffron" />
-        <div className="login3-art"><MeditationArt /></div>
       </div>
 
       <div className="login3-logo">
         <img src="/logo-mark.svg" alt="" />
-        <span><b>BHARATH</b> AUTOMATION</span>
+        <span className="l3-brand"><b>BHARATH</b><i>AUTOMATION</i></span>
       </div>
 
-      {/* transparent glass card over the wallpaper */}
-      <form className="login3-card" onSubmit={submit}>
-        <h1>{greeting()}</h1>
-        <p className="l3-tag">Let’s get things done ✨</p>
+      <div className="login3-inner">
+        {/* transparent glass card */}
+        <form className="login3-card" onSubmit={submit}>
+          <h1>{greeting()}</h1>
+          <p className="l3-tag">Let’s get things done ✨</p>
 
-        <label className="l2-field">
-          <input value={username} autoFocus autoComplete="username" placeholder="User ID" onChange={(e) => setUsername(e.target.value)} />
-        </label>
-        <label className="l2-field l2-pass">
-          <input type={show ? 'text' : 'password'} value={password} autoComplete="current-password" placeholder="Password" onChange={(e) => setPassword(e.target.value)} />
-          <button type="button" className="l2-eye" onClick={() => setShow((s) => !s)} aria-label="Toggle password">{show ? '🙈' : '👁'}</button>
-        </label>
+          <label className="l2-field">
+            <input value={username} autoFocus autoComplete="username" placeholder="User ID" onChange={(e) => setUsername(e.target.value)} />
+          </label>
+          <label className="l2-field l2-pass">
+            <input type={show ? 'text' : 'password'} value={password} autoComplete="current-password" placeholder="Password" onChange={(e) => setPassword(e.target.value)} />
+            <button type="button" className="l2-eye" onClick={() => setShow((s) => !s)} aria-label="Toggle password">{show ? '🙈' : '👁'}</button>
+          </label>
 
-        {err && <div className="l2-err">{err}</div>}
+          {err && <div className="l2-err">{err}</div>}
 
-        <button className="l3-btn" type="submit" disabled={busy || !username || !password}>
-          {busy ? 'Signing in…' : 'Login'}
-        </button>
-      </form>
+          <button className="l3-btn" type="submit" disabled={busy || !username || !password}>
+            {busy ? 'Signing in…' : 'Login'}
+          </button>
+        </form>
+
+        {/* calm figure — to the right, clearly visible */}
+        <div className="login3-art"><MeditationArt /></div>
+      </div>
     </div>
   );
 }
