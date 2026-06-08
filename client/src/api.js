@@ -70,6 +70,23 @@ export const api = {
   updateSeries: (id, data) => req(`/series/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteSeries: (id) => req(`/series/${id}`, { method: 'DELETE' }),
 
+  // users (admin)
+  listUsers: () => req('/users'),
+  createUser: (data) => req('/users', { method: 'POST', body: JSON.stringify(data) }),
+  resetUserPassword: (id, password) => req(`/users/${id}/password`, { method: 'PUT', body: JSON.stringify({ password }) }),
+  deleteUser: (id) => req(`/users/${id}`, { method: 'DELETE' }),
+
+  // employees / staff (admin)
+  listEmployees: () => req('/employees'),
+  getEmployee: (id) => req(`/employees/${id}`),
+  createEmployee: (data) => req('/employees', { method: 'POST', body: JSON.stringify(data) }),
+  updateEmployee: (id, data) => req(`/employees/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteEmployee: (id) => req(`/employees/${id}`, { method: 'DELETE' }),
+  getEmployeeDoc: (id, type) => req(`/employees/${id}/document/${type}`),
+  setEmployeeDoc: (id, type, dataUrl) => req(`/employees/${id}/document/${type}`, { method: 'PUT', body: JSON.stringify({ dataUrl }) }),
+  deleteEmployeeDoc: (id, type) => req(`/employees/${id}/document/${type}`, { method: 'DELETE' }),
+  setAttendance: (id, present) => req(`/employees/${id}/attendance`, { method: 'PUT', body: JSON.stringify({ present }) }),
+
   // customers / clients
   listCustomers: () => req('/customers'),
   getCustomer: (id) => req(`/customers/${id}`),

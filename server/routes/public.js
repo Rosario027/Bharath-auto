@@ -22,7 +22,7 @@ router.get('/login-content', async (req, res, next) => {
     res.json({
       companyName: settings.companyName,
       note: settings.loginNote || '',
-      heading: settings.loginHeading || 'Thirukkural',
+      heading: (settings.loginHeading && settings.loginHeading !== 'Thirukkural') ? settings.loginHeading : 'Thirukural of the day',
       showQuote: settings.showLoginQuote !== false && !!quote,
       quote: quote ? { text: quote.text, meaning: quote.meaning } : null,
     });

@@ -111,7 +111,7 @@ export default function Login({ onLogin }) {
         <div className="login3-quote">
           {content.showQuote && content.quote && (
             <>
-              <div className="lq-heading">{content.heading || 'Thirukkural'} · குறள்</div>
+              <div className="lq-heading">{content.heading || 'Thirukural of the day'}</div>
               <div className="lq-text">{content.quote.text.split('\n').map((ln, i) => <div key={i}>{ln}</div>)}</div>
               {content.quote.meaning && <div className="lq-meaning">{content.quote.meaning}</div>}
             </>

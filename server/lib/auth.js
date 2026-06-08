@@ -2,14 +2,23 @@
 // Two fixed accounts (overridable via env). Roles: 'admin' (full) and
 // 'user' (invoicing only — no client data, no settings).
 import crypto from 'node:crypto';
+import { prisma } from './db.js';
 
 const SECRET = process.env.AUTH_SECRET || 'bharath-automation-secret-change-in-railway-env';
 const TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 
-const ACCOUNTS = {
-  [process.env.ADMIN_USER || 'Admin']: { password: process.env.ADMIN_PASS || 'Admin123', role: 'admin' },
-  [process.env.USER_USER || 'User']: { password: process.env.USER_PASS || 'User123', role: 'user' },
-};
+// ── Password hashing (scrypt, zero-dep) ──
+export function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(String(password), salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+export function verifyPassword(password, stored) {
+  if (!stored || !stored.includes(':')) return false;
+  const [salt, hash] = stored.split(':');
+  const test = crypto.scryptSync(String(password), salt, 64).toString('hex');
+  return safeEqual(hash, test);
+}
 
 function safeEqual(a, b) {
   const ab = Buffer.from(String(a));
@@ -36,11 +45,11 @@ export function verifyToken(token) {
   return payload;
 }
 
-export function authenticate(username, password) {
-  const acc = ACCOUNTS[username];
-  if (!acc || !safeEqual(acc.password, password)) return null;
-  const payload = { u: username, role: acc.role, exp: Date.now() + TTL_MS };
-  return { token: sign(payload), user: { username, role: acc.role } };
+export async function authenticate(username, password) {
+  const user = await prisma.user.findUnique({ where: { username: (username || '').trim() } });
+  if (!user || !verifyPassword(password, user.passHash)) return null;
+  const payload = { u: user.username, role: user.role, exp: Date.now() + TTL_MS };
+  return { token: sign(payload), user: { username: user.username, role: user.role } };
 }
 
 function readToken(req) {

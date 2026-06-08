@@ -7,6 +7,9 @@ import Settings from './pages/Settings.jsx';
 import Clients from './pages/Clients.jsx';
 import ClientDetail from './pages/ClientDetail.jsx';
 import Login from './pages/Login.jsx';
+import Staff from './pages/Staff.jsx';
+import EmployeeEdit from './pages/EmployeeEdit.jsx';
+import AppSettings from './pages/AppSettings.jsx';
 
 const SettingsContext = createContext(null);
 export const useSettings = () => useContext(SettingsContext);
@@ -40,7 +43,7 @@ function TopBar({ onHamburger, view, setView, isMobile, user, onLogout }) {
 function Sidebar({ onNavigate, isAdmin }) {
   const nav = useNavigate();
   const loc = useLocation();
-  const invoiceActive = ['/', '/new', '/settings'].includes(loc.pathname);
+  const invoiceActive = ['/', '/new', '/settings'].includes(loc.pathname) || loc.pathname.startsWith('/invoice');
   const [invoiceOpen, setInvoiceOpen] = useState(true);
 
   const sub = (to, label, end) => (
@@ -76,8 +79,22 @@ function Sidebar({ onNavigate, isAdmin }) {
             <span className="nav-label">Clients</span>
           </NavLink>
         )}
+        {isAdmin && (
+          <NavLink to="/staff" onClick={onNavigate} className={() => 'nav-item' + (loc.pathname.startsWith('/staff') ? ' active' : '')}>
+            <span className="nav-icon">🧑‍💼</span>
+            <span className="nav-label">Staff</span>
+          </NavLink>
+        )}
       </nav>
-      <div className="sidebar-foot"><span className="ver">Bharath Automation · Invoicing v1.0</span></div>
+      <div className="sidebar-foot">
+        {isAdmin && (
+          <NavLink to="/app-settings" onClick={onNavigate} className={({ isActive }) => 'nav-item settings-item' + (isActive ? ' active' : '')}>
+            <span className="nav-icon">⚙️</span>
+            <span className="nav-label">Settings</span>
+          </NavLink>
+        )}
+        <span className="ver">Bharath Automation · Invoicing v1.0</span>
+      </div>
     </aside>
   );
 }
@@ -143,6 +160,10 @@ export default function App() {
                 <Route path="/settings" element={<AdminOnly><Settings /></AdminOnly>} />
                 <Route path="/clients" element={<AdminOnly><Clients /></AdminOnly>} />
                 <Route path="/clients/:id" element={<AdminOnly><ClientDetail /></AdminOnly>} />
+                <Route path="/staff" element={<AdminOnly><Staff /></AdminOnly>} />
+                <Route path="/staff/new" element={<AdminOnly><EmployeeEdit key="new" /></AdminOnly>} />
+                <Route path="/staff/:id" element={<AdminOnly><EmployeeEdit /></AdminOnly>} />
+                <Route path="/app-settings" element={<AdminOnly><AppSettings /></AdminOnly>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </main>

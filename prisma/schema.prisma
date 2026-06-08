@@ -61,10 +61,58 @@ model CompanySettings {
 
   // Login screen content (editable by admin, shown to everyone)
   loginNote   String  @default("")
-  loginHeading String @default("Thirukkural")
+  loginHeading String @default("Thirukural of the day")
   showLoginQuote Boolean @default(true)
 
   updatedAt DateTime @updatedAt
+}
+
+// App users (login accounts). Passwords are scrypt-hashed.
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  role      String   @default("user") // admin | user
+  passHash  String
+  createdAt DateTime @default(now())
+}
+
+// Staff / employee files
+model Employee {
+  id               Int       @id @default(autoincrement())
+  name             String
+  dob              DateTime?
+  address          String    @default("")
+  phone            String    @default("")
+  altPhone         String    @default("")
+  bloodGroup       String    @default("")
+  medicalCondition String    @default("")
+  medication       String    @default("")
+  emergencyName    String    @default("") // parent / guardian
+  emergencyPhone   String    @default("")
+  email            String    @default("")
+  // documents — stored as image data URLs (<= 2MB each)
+  aadharDoc    String?
+  panDoc       String?
+  licenseDoc   String?
+  rcDoc        String?
+  insuranceDoc String?
+  // vehicle
+  vehicleNo       String    @default("")
+  insuranceExpiry DateTime?
+  active          Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  attendance      Attendance[]
+}
+
+model Attendance {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date       String   // yyyy-mm-dd
+  present    Boolean  @default(true)
+
+  @@unique([employeeId, date])
 }
 
 // Rotating login-screen quotes (Thirukkural). One is shown per day,

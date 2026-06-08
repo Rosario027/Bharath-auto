@@ -3,6 +3,16 @@
 // row if it does not already exist, so user edits in Settings are preserved.
 import 'dotenv/config';
 import { prisma } from './db.js';
+import { hashPassword } from './auth.js';
+
+export async function ensureUsers() {
+  const count = await prisma.user.count();
+  if (count === 0) {
+    await prisma.user.create({ data: { username: process.env.ADMIN_USER || 'Admin', role: 'admin', passHash: hashPassword(process.env.ADMIN_PASS || 'Admin123') } });
+    await prisma.user.create({ data: { username: process.env.USER_USER || 'User', role: 'user', passHash: hashPassword(process.env.USER_PASS || 'User123') } });
+    console.log('[seed] Default users created (Admin / User).');
+  }
+}
 
 export async function ensureDefaultSeries(settings) {
   const count = await prisma.invoiceSeries.count();
@@ -47,6 +57,7 @@ export async function seed() {
     console.log('[seed] CompanySettings already present — skipping.');
     await ensureDefaultSeries(existing);
     await ensureLoginQuotes();
+    await ensureUsers();
     return existing;
   }
 
@@ -85,6 +96,7 @@ export async function seed() {
   console.log('[seed] CompanySettings created.');
   await ensureDefaultSeries(settings);
   await ensureLoginQuotes();
+  await ensureUsers();
   return settings;
 }
 

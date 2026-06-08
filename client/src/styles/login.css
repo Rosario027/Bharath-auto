@@ -21,7 +21,7 @@
   position: relative; z-index: 3; width: min(1120px, 96vw);
   display: grid; grid-template-columns: minmax(360px, 440px) 1fr; align-items: center; gap: 40px;
 }
-.login3-art { justify-self: center; width: min(560px, 90%); filter: drop-shadow(0 24px 50px rgba(47,125,50,.18)); }
+.login3-art { justify-self: center; width: min(560px, 90%); filter: drop-shadow(0 24px 50px rgba(47,125,50,.18)); transform: translate(-26px, -34px); }
 .login3-art .med-svg { width: 100%; height: auto; display: block; }
 
 /* logo — large */
@@ -69,10 +69,9 @@
 
 /* daily Thirukkural at the bottom center */
 .login3-quote {
-  position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 4;
-  text-align: center; max-width: min(780px, 92vw); padding: 12px 20px;
-  background: rgba(255,255,255,.45); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.6);
-  border-radius: 18px; box-shadow: 0 10px 30px rgba(20,33,15,.08);
+  position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 4;
+  text-align: center; max-width: min(800px, 92vw); padding: 8px 20px;
+  background: transparent; border: none; box-shadow: none;
 }
 .lq-heading { font-size: 10.5px; letter-spacing: 2px; text-transform: uppercase; color: #5B9B36; font-weight: 800; margin-bottom: 6px; }
 .lq-text { font-size: 16px; font-weight: 700; color: #16240f; line-height: 1.55; font-family: 'Noto Sans Tamil', 'Latha', 'Inter', sans-serif; }
