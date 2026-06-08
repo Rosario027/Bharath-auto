@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, authRequired } from '../lib/auth.js';
+import { authenticate, authRequired, changePassword } from '../lib/auth.js';
 
 const router = Router();
 
@@ -13,5 +13,15 @@ router.post('/login', async (req, res, next) => {
 });
 
 router.get('/me', authRequired, (req, res) => res.json({ user: req.user }));
+
+// Self-service password change (any logged-in user)
+router.put('/change-password', authRequired, async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    const r = await changePassword(req.user.username, currentPassword, newPassword);
+    if (r.error) return res.status(400).json({ error: r.error });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
 
 export default router;

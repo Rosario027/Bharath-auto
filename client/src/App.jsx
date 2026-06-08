@@ -10,6 +10,14 @@ import Login from './pages/Login.jsx';
 import Staff from './pages/Staff.jsx';
 import EmployeeEdit from './pages/EmployeeEdit.jsx';
 import AppSettings from './pages/AppSettings.jsx';
+import AccountSettings from './pages/AccountSettings.jsx';
+
+const IconMonitor = () => (
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></svg>
+);
+const IconPhone = () => (
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5" /><path d="M11 18h2" /></svg>
+);
 
 const SettingsContext = createContext(null);
 export const useSettings = () => useContext(SettingsContext);
@@ -29,8 +37,8 @@ function TopBar({ onHamburger, view, setView, isMobile, user, onLogout }) {
       </div>
       <div className="topbar-spacer" />
       <div className="view-toggle" role="group" aria-label="Layout">
-        <button className={`vt ${!isMobile ? 'on' : ''}`} onClick={() => setView('web')} title="Desktop layout">🖥</button>
-        <button className={`vt ${isMobile ? 'on' : ''}`} onClick={() => setView('mobile')} title="Mobile layout">📱</button>
+        <button className={`vt ${!isMobile ? 'on' : ''}`} onClick={() => setView('web')} title="Desktop view" aria-label="Desktop view"><IconMonitor /></button>
+        <button className={`vt ${isMobile ? 'on' : ''}`} onClick={() => setView('mobile')} title="Mobile view" aria-label="Mobile view"><IconPhone /></button>
       </div>
       <div className="topbar-user">
         <span className={`user-chip role-${user.role}`}>{user.username} · {user.role}</span>
@@ -85,6 +93,10 @@ function Sidebar({ onNavigate, isAdmin }) {
             <span className="nav-label">Staff</span>
           </NavLink>
         )}
+        <NavLink to="/account" onClick={onNavigate} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
+          <span className="nav-icon">👤</span>
+          <span className="nav-label">My Account</span>
+        </NavLink>
       </nav>
       <div className="sidebar-foot">
         {isAdmin && (
@@ -164,6 +176,7 @@ export default function App() {
                 <Route path="/staff/new" element={<AdminOnly><EmployeeEdit key="new" /></AdminOnly>} />
                 <Route path="/staff/:id" element={<AdminOnly><EmployeeEdit /></AdminOnly>} />
                 <Route path="/app-settings" element={<AdminOnly><AppSettings /></AdminOnly>} />
+                <Route path="/account" element={<AccountSettings />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </main>

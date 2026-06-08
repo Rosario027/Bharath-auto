@@ -1,7 +1,7 @@
 // Admin staff management — employee files, documents, attendance.
 import { Router } from 'express';
 import { prisma } from '../lib/db.js';
-import { adminRequired } from '../lib/auth.js';
+import { adminRequired, hashPassword } from '../lib/auth.js';
 
 const router = Router();
 router.use(adminRequired);
@@ -52,20 +52,48 @@ router.get('/:id', async (req, res, next) => {
   try {
     const emp = await prisma.employee.findUnique({
       where: { id: Number(req.params.id) },
-      include: { attendance: { where: { date: today() } } },
+      include: { attendance: { where: { date: today() } }, user: { select: { username: true } } },
     });
     if (!emp) return res.status(404).json({ error: 'Employee not found' });
-    res.json({ ...emp, presentToday: emp.attendance.length ? emp.attendance[0].present : false });
+    res.json({ ...emp, username: emp.user?.username || '', presentToday: emp.attendance.length ? emp.attendance[0].present : false });
   } catch (e) { next(e); }
 });
 
+// Create employee — a login account (user id + password) is the mandatory first step.
 router.post('/', async (req, res, next) => {
   try {
     const b = req.body || {};
     if (!(b.name || '').trim()) return res.status(400).json({ error: 'Employee name is required' });
-    const emp = await prisma.employee.create({ data: scalarData(b) });
-    res.status(201).json(emp);
-  } catch (e) { next(e); }
+    if (!(b.username || '').trim() || !(b.password || '').trim()) return res.status(400).json({ error: 'A login User ID and password are required' });
+    if (String(b.password).length < 4) return res.status(400).json({ error: 'Password must be at least 4 characters' });
+
+    const emp = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({ data: { username: b.username.trim(), role: 'user', passHash: hashPassword(b.password) } });
+      return tx.employee.create({ data: { ...scalarData(b), userId: user.id } });
+    });
+    res.status(201).json({ ...emp, username: b.username.trim() });
+  } catch (e) {
+    if (e.code === 'P2002') return res.status(409).json({ error: 'That login User ID already exists' });
+    next(e);
+  }
+});
+
+// Create a login for a legacy employee that doesn't have one yet.
+router.post('/:id/login', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const { username, password } = req.body || {};
+    if (!(username || '').trim() || !(password || '').trim()) return res.status(400).json({ error: 'User ID and password are required' });
+    const emp = await prisma.employee.findUnique({ where: { id } });
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
+    if (emp.userId) return res.status(400).json({ error: 'This employee already has a login' });
+    const user = await prisma.user.create({ data: { username: username.trim(), role: 'user', passHash: hashPassword(password) } });
+    await prisma.employee.update({ where: { id }, data: { userId: user.id } });
+    res.json({ ok: true, username: username.trim() });
+  } catch (e) {
+    if (e.code === 'P2002') return res.status(409).json({ error: 'That login User ID already exists' });
+    next(e);
+  }
 });
 
 router.put('/:id', async (req, res, next) => {

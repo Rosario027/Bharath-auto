@@ -21,6 +21,7 @@ function ageFrom(dob) {
 }
 
 const blank = {
+  username: '', password: '',
   name: '', dob: '', address: '', phone: '', altPhone: '', bloodGroup: '', medicalCondition: '',
   medication: '', emergencyName: '', emergencyPhone: '', email: '', vehicleNo: '', insuranceExpiry: '', active: true,
   aadharDoc: null, panDoc: null, licenseDoc: null, rcDoc: null, insuranceDoc: null,
@@ -35,6 +36,7 @@ export default function EmployeeEdit() {
   const [presentToday, setPresentToday] = useState(false);
   const [saving, setSaving] = useState(false);
   const [busyDoc, setBusyDoc] = useState('');
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [toast, setToast] = useState(null);
   const flash = (msg, kind = 'ok') => { setToast({ msg, kind }); setTimeout(() => setToast(null), 3000); };
 
@@ -51,8 +53,25 @@ export default function EmployeeEdit() {
 
   if (!emp) return <div className="page"><div className="empty">Loading…</div></div>;
 
+  const reloadEmp = async () => {
+    const e = await api.getEmployee(savedId);
+    setEmp((p) => ({ ...p, username: e.username || '', userId: e.userId }));
+  };
+  const resetLoginPw = async () => {
+    if (!emp.userId) return;
+    const pw = prompt(`Set a new password for "${emp.username}":`);
+    if (!pw) return;
+    try { await api.resetUserPassword(emp.userId, pw); flash('Login password reset'); } catch (e) { flash(e.message, 'err'); }
+  };
+  const createLogin = async () => {
+    if (!loginForm.username.trim() || !loginForm.password.trim()) return flash('Enter User ID and password', 'err');
+    try { await api.createEmployeeLogin(savedId, loginForm.username, loginForm.password); setLoginForm({ username: '', password: '' }); await reloadEmp(); flash('Login created'); }
+    catch (e) { flash(e.message, 'err'); }
+  };
+
   const save = async () => {
     if (!emp.name.trim()) return flash('Name is required', 'err');
+    if (!savedId && (!emp.username.trim() || !emp.password.trim())) return flash('A login User ID and password are required to create a staff member', 'err');
     setSaving(true);
     try {
       const payload = { ...emp };
@@ -113,6 +132,35 @@ export default function EmployeeEdit() {
           <button className="btn primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : (savedId ? 'Update' : 'Save')}</button>
         </div>
       </header>
+
+      <section className="fsec">
+        <h3>Login Account <span className="hint">required</span></h3>
+        {!savedId && (
+          <>
+            <p className="subtle" style={{ fontSize: 13, marginTop: 0 }}>Set the staff member's login. They can sign in and change their own password later.</p>
+            <div className="grid2">
+              <label>Login User ID *<input value={emp.username} onChange={(e) => set({ username: e.target.value })} /></label>
+              <label>Password *<input value={emp.password} onChange={(e) => set({ password: e.target.value })} /></label>
+            </div>
+          </>
+        )}
+        {savedId && emp.username && (
+          <div className="grid2">
+            <label>Login User ID<input value={emp.username} readOnly /></label>
+            <div style={{ display: 'flex', alignItems: 'flex-end' }}><button className="btn" onClick={resetLoginPw}>Reset password</button></div>
+          </div>
+        )}
+        {savedId && !emp.username && (
+          <>
+            <p className="subtle" style={{ fontSize: 13, marginTop: 0 }}>This employee has no login yet — create one:</p>
+            <div className="grid2">
+              <label>Login User ID<input value={loginForm.username} onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })} /></label>
+              <label>Password<input value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} /></label>
+              <div style={{ display: 'flex', alignItems: 'flex-end' }}><button className="btn" onClick={createLogin}>Create login</button></div>
+            </div>
+          </>
+        )}
+      </section>
 
       <section className="fsec">
         <h3>Personal</h3>

@@ -45,6 +45,14 @@ export function verifyToken(token) {
   return payload;
 }
 
+export async function changePassword(username, currentPassword, newPassword) {
+  const user = await prisma.user.findUnique({ where: { username } });
+  if (!user || !verifyPassword(currentPassword, user.passHash)) return { error: 'Current password is incorrect.' };
+  if (!newPassword || String(newPassword).length < 4) return { error: 'New password must be at least 4 characters.' };
+  await prisma.user.update({ where: { id: user.id }, data: { passHash: hashPassword(newPassword) } });
+  return { ok: true };
+}
+
 export async function authenticate(username, password) {
   const user = await prisma.user.findUnique({ where: { username: (username || '').trim() } });
   if (!user || !verifyPassword(password, user.passHash)) return null;

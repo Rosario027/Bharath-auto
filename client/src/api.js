@@ -43,6 +43,8 @@ export const api = {
   // auth
   login: (username, password) => req('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
 
+  changePassword: (currentPassword, newPassword) => req('/auth/change-password', { method: 'PUT', body: JSON.stringify({ currentPassword, newPassword }) }),
+
   // public login-screen content
   getLoginContent: () => req('/public/login-content'),
 
@@ -86,6 +88,7 @@ export const api = {
   setEmployeeDoc: (id, type, dataUrl) => req(`/employees/${id}/document/${type}`, { method: 'PUT', body: JSON.stringify({ dataUrl }) }),
   deleteEmployeeDoc: (id, type) => req(`/employees/${id}/document/${type}`, { method: 'DELETE' }),
   setAttendance: (id, present) => req(`/employees/${id}/attendance`, { method: 'PUT', body: JSON.stringify({ present }) }),
+  createEmployeeLogin: (id, username, password) => req(`/employees/${id}/login`, { method: 'POST', body: JSON.stringify({ username, password }) }),
 
   // customers / clients
   listCustomers: () => req('/customers'),

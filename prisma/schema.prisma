@@ -69,16 +69,19 @@ model CompanySettings {
 
 // App users (login accounts). Passwords are scrypt-hashed.
 model User {
-  id        Int      @id @default(autoincrement())
-  username  String   @unique
-  role      String   @default("user") // admin | user
+  id        Int       @id @default(autoincrement())
+  username  String    @unique
+  role      String    @default("user") // admin | user
   passHash  String
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
+  employee  Employee?
 }
 
 // Staff / employee files
 model Employee {
   id               Int       @id @default(autoincrement())
+  userId           Int?      @unique
+  user             User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
   name             String
   dob              DateTime?
   address          String    @default("")
