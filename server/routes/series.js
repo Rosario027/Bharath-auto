@@ -17,14 +17,16 @@ router.get('/', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.post('/', adminRequired, async (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
     const b = req.body || {};
     if (!(b.prefix || '').trim()) return res.status(400).json({ error: 'Series prefix is required' });
+    const docType = ['credit-note', 'debit-note'].includes(b.docType) ? b.docType : 'invoice';
     const makeDefault = !!b.isDefault;
-    if (makeDefault) await prisma.invoiceSeries.updateMany({ data: { isDefault: false } });
+    if (makeDefault) await prisma.invoiceSeries.updateMany({ where: { docType }, data: { isDefault: false } });
     const series = await prisma.invoiceSeries.create({
       data: {
+        docType,
         name: (b.name || 'Series').trim(),
         prefix: b.prefix.trim(),
         nextSeq: Number(b.nextSeq) > 0 ? Math.floor(Number(b.nextSeq)) : 1,
@@ -36,11 +38,14 @@ router.post('/', adminRequired, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.put('/:id', adminRequired, async (req, res, next) => {
+router.put('/:id', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const b = req.body || {};
-    if (b.isDefault) await prisma.invoiceSeries.updateMany({ data: { isDefault: false } });
+    if (b.isDefault) {
+      const target = await prisma.invoiceSeries.findUnique({ where: { id } });
+      if (target) await prisma.invoiceSeries.updateMany({ where: { docType: target.docType }, data: { isDefault: false } });
+    }
     const data = {};
     if (b.name !== undefined) data.name = b.name;
     if (b.prefix !== undefined) data.prefix = b.prefix;

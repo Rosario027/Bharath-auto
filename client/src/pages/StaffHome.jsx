@@ -201,7 +201,7 @@ export default function StaffHome() {
               return (
                 <div className={`task-card st-${status}`} key={t.id}>
                   <div className="task-main">
-                    <div className="task-title">{t.title} {t.status === 'assigned' && !edit.status && <span className="badge edited">new</span>}</div>
+                    <div className="task-title">{t.title} <span className={`badge pr-${t.priority || 'medium'}`}>{t.priority || 'medium'}</span> {t.status === 'assigned' && !edit.status && <span className="badge edited">new</span>}</div>
                     {t.description && <div className="task-desc">{t.description}</div>}
                     <div className="task-meta">Assigned by {t.assignedBy} · {new Date(t.createdAt).toLocaleDateString('en-IN')}{t.dueDate ? ` · Due ${fmtDate(t.dueDate)}` : ''}</div>
                   </div>

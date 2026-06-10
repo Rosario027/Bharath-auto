@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { Routes, Route, NavLink, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { api, setAuth, getStoredUser } from './api.js';
 import Dashboard from './pages/Dashboard.jsx';
@@ -17,6 +17,54 @@ import StaffApprovals from './pages/StaffApprovals.jsx';
 import SiteVisits from './pages/SiteVisits.jsx';
 import SiteVisitNew from './pages/SiteVisitNew.jsx';
 import SiteVisitDetail from './pages/SiteVisitDetail.jsx';
+import Inventory from './pages/Inventory.jsx';
+import Reports from './pages/Reports.jsx';
+
+// ── 60-min inactivity logout with a 30-second "continue?" warning ──
+const IDLE_LIMIT_MS = 60 * 60 * 1000;
+const WARN_BEFORE_MS = 30 * 1000;
+
+function useIdleTimeout(active, onExpire) {
+  const lastActivity = useRef(Date.now());
+  const lastPing = useRef(Date.now());
+  const [warning, setWarning] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(30);
+
+  useEffect(() => {
+    if (!active) return;
+    const bump = () => { lastActivity.current = Date.now(); };
+    const events = ['mousedown', 'keydown', 'touchstart', 'scroll'];
+    events.forEach((e) => window.addEventListener(e, bump, { passive: true }));
+
+    const timer = setInterval(() => {
+      const idle = Date.now() - lastActivity.current;
+      // keep the server session alive while the user is active
+      if (idle < 5 * 60 * 1000 && Date.now() - lastPing.current > 10 * 60 * 1000) {
+        lastPing.current = Date.now();
+        api.ping().catch(() => {});
+      }
+      if (idle >= IDLE_LIMIT_MS) {
+        setWarning(false);
+        onExpire();
+      } else if (idle >= IDLE_LIMIT_MS - WARN_BEFORE_MS) {
+        setWarning(true);
+        setSecondsLeft(Math.max(0, Math.ceil((IDLE_LIMIT_MS - idle) / 1000)));
+      } else {
+        setWarning(false);
+      }
+    }, 1000);
+
+    return () => { events.forEach((e) => window.removeEventListener(e, bump)); clearInterval(timer); };
+  }, [active, onExpire]);
+
+  const extend = () => {
+    lastActivity.current = Date.now();
+    lastPing.current = Date.now();
+    setWarning(false);
+    api.ping().catch(() => {});
+  };
+  return { warning, secondsLeft, extend };
+}
 
 const IconMonitor = () => (
   <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></svg>
@@ -47,7 +95,7 @@ function TopBar({ onHamburger, view, setView, isMobile, user, onLogout }) {
         <button className={`vt ${isMobile ? 'on' : ''}`} onClick={() => setView('mobile')} title="Mobile view" aria-label="Mobile view"><IconPhone /></button>
       </div>
       <div className="topbar-user">
-        <span className={`user-chip role-${user.role}`}>{user.username} · {user.role}</span>
+        <span className={`user-chip role-${user.role}`}>{user.username} · {user.role === 'user' ? 'accountant' : user.role}</span>
         <button className="btn xs ghost-light" onClick={onLogout}>Logout</button>
       </div>
     </header>
@@ -134,6 +182,14 @@ function Sidebar({ onNavigate, isAdmin, isStaff }) {
             )}
           </div>
         )}
+        <NavLink to="/inventory" onClick={onNavigate} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
+          <span className="nav-icon">📦</span>
+          <span className="nav-label">Inventory</span>
+        </NavLink>
+        <NavLink to="/reports" onClick={onNavigate} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
+          <span className="nav-icon">📊</span>
+          <span className="nav-label">Reports</span>
+        </NavLink>
         <NavLink to="/account" onClick={onNavigate} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
           <span className="nav-icon">👤</span>
           <span className="nav-label">My Account</span>
@@ -201,7 +257,14 @@ export default function App() {
 
   const updateSettingsLocal = useCallback((patch) => setSettings((prev) => ({ ...prev, ...patch })), []);
 
-  const logout = () => { setAuth(''); setUser(null); setSettings(null); };
+  const logout = useCallback(() => {
+    api.logout().catch(() => {});
+    setAuth('');
+    setUser(null);
+    setSettings(null);
+  }, []);
+
+  const { warning, secondsLeft, extend } = useIdleTimeout(!!user, logout);
 
   // Not signed in → show the login screen.
   if (!user) return <Login onLogin={(u) => { setUser(u); setLoading(true); }} />;
@@ -218,6 +281,19 @@ export default function App() {
     <AuthContext.Provider value={{ user, isAdmin, isStaff, logout }}>
       <SettingsContext.Provider value={{ settings, setSettings, refreshSettings, updateSettingsLocal }}>
         <div className={`app-root ${isMobile ? 'is-mobile' : 'is-web'} ${sidebarOpen ? 'sb-open' : 'sb-closed'}`}>
+          {warning && (
+            <div className="idle-overlay">
+              <div className="idle-modal">
+                <h2>⏰ Still there?</h2>
+                <p>You'll be logged out in <b>{secondsLeft}</b> second{secondsLeft === 1 ? '' : 's'} due to inactivity.</p>
+                <p className="subtle">Do you want to continue your session?</p>
+                <div className="idle-actions">
+                  <button className="btn primary" onClick={extend}>Yes, keep me signed in</button>
+                  <button className="btn" onClick={logout}>Logout now</button>
+                </div>
+              </div>
+            </div>
+          )}
           <TopBar onHamburger={() => setSidebarOpen((v) => !v)} view={view} setView={setView} isMobile={isMobile} user={user} onLogout={logout} />
           <div className="app-body">
             {sidebarOpen && <Sidebar onNavigate={closeOnMobile} isAdmin={isAdmin} isStaff={isStaff} />}
@@ -242,6 +318,8 @@ export default function App() {
                 <Route path="/site-visits/new" element={<SiteVisitNew />} />
                 <Route path="/my-visits/new" element={<SiteVisitNew />} />
                 <Route path="/site-visits/:id" element={<SiteVisitDetail />} />
+                <Route path="/inventory" element={<Inventory />} />
+                <Route path="/reports" element={<Reports />} />
                 <Route path="/app-settings" element={<AdminOnly><AppSettings /></AdminOnly>} />
                 <Route path="/account" element={<AccountSettings />} />
                 <Route path="*" element={<Navigate to="/" replace />} />

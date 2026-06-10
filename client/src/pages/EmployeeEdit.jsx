@@ -24,6 +24,7 @@ const blank = {
   username: '', password: '',
   name: '', dob: '', address: '', phone: '', altPhone: '', bloodGroup: '', medicalCondition: '',
   medication: '', emergencyName: '', emergencyPhone: '', email: '', vehicleNo: '', insuranceExpiry: '', active: true,
+  monthlySalary: 0, satOff: false, sunOff: true, sunMultiplier: 2,
   aadharDoc: null, panDoc: null, licenseDoc: null, rcDoc: null, insuranceDoc: null,
 };
 
@@ -38,6 +39,8 @@ export default function EmployeeEdit() {
   const [busyDoc, setBusyDoc] = useState('');
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [attLog, setAttLog] = useState([]);
+  const [salMonth, setSalMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [salary, setSalary] = useState(null);
   const [toast, setToast] = useState(null);
   const flash = (msg, kind = 'ok') => { setToast({ msg, kind }); setTimeout(() => setToast(null), 3000); };
 
@@ -194,6 +197,43 @@ export default function EmployeeEdit() {
           <label>Two-wheeler Number<input value={emp.vehicleNo} placeholder="e.g. TN 37 EX 8218" onChange={(e) => set({ vehicleNo: e.target.value })} /></label>
           <label>Insurance Expiry<input type="date" value={emp.insuranceExpiry} onChange={(e) => set({ insuranceExpiry: e.target.value })} /></label>
         </div>
+      </section>
+
+      <section className="fsec">
+        <h3>Compensation <span className="hint">salary auto-calculated from attendance</span></h3>
+        <div className="grid2">
+          <label>Fixed Monthly Salary (₹)<input type="number" step="any" value={emp.monthlySalary} onChange={(e) => set({ monthlySalary: e.target.value })} /></label>
+          <label>Off-day Pay Multiplier
+            <select value={emp.sunMultiplier} onChange={(e) => set({ sunMultiplier: Number(e.target.value) })}>
+              <option value={1}>1× (normal pay)</option>
+              <option value={1.5}>1.5×</option>
+              <option value={2}>2× (double compensation)</option>
+              <option value={3}>3×</option>
+            </select>
+          </label>
+          <label className="full" style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><input type="checkbox" style={{ width: 'auto' }} checked={!!emp.sunOff} onChange={(e) => set({ sunOff: e.target.checked })} /> Sunday is weekly off</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><input type="checkbox" style={{ width: 'auto' }} checked={!!emp.satOff} onChange={(e) => set({ satOff: e.target.checked })} /> Saturday is weekly off</span>
+          </label>
+        </div>
+        <p className="subtle" style={{ fontSize: 12 }}>Pay = (salary ÷ working days) × days present, plus the multiplier for days worked on a weekly off. Save the file first, then compute below.</p>
+        {savedId && (
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 6 }}>
+            <label style={{ width: 170 }}>Month<input type="month" value={salMonth} onChange={(e) => setSalMonth(e.target.value)} /></label>
+            <button className="btn" onClick={async () => { try { setSalary(await api.staffSalary(savedId, salMonth)); } catch (e) { flash(e.message, 'err'); } }}>Compute pay</button>
+          </div>
+        )}
+        {salary && (
+          <div className="salary-box">
+            <div><span>Working days</span><b>{salary.workingDays} / {salary.daysInMonth}</b></div>
+            <div><span>Present (working days)</span><b>{salary.presentWorking}</b></div>
+            <div><span>Worked on off-days</span><b>{salary.presentOff} × {salary.sunMultiplier}×</b></div>
+            <div><span>Per-day rate</span><b>₹ {salary.perDay}</b></div>
+            <div><span>Base pay</span><b>₹ {salary.basePay}</b></div>
+            <div><span>Off-day pay</span><b>₹ {salary.offDayPay}</b></div>
+            <div className="sal-total"><span>Payable ({salary.month})</span><b>₹ {salary.total}</b></div>
+          </div>
+        )}
       </section>
 
       <section className="fsec">

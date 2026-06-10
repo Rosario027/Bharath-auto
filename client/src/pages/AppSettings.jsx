@@ -18,12 +18,14 @@ export default function AppSettings() {
   const [quotes, setQuotes] = useState([]);
   const [schedule, setSchedule] = useState([]);
   const loadQuotes = () => api.listLoginQuotes().then((r) => { setQuotes(r.quotes); setSchedule(r.schedule); }).catch(() => {});
-  // Users
+  // Users + sessions
   const [users, setUsers] = useState([]);
+  const [sessions, setSessions] = useState([]);
   const [newUser, setNewUser] = useState({ username: '', password: '', role: 'user' });
   const loadUsers = () => api.listUsers().then(setUsers).catch(() => {});
+  const loadSessions = () => api.listSessions().then(setSessions).catch(() => {});
 
-  useEffect(() => { loadQuotes(); loadUsers(); }, []);
+  useEffect(() => { loadQuotes(); loadUsers(); loadSessions(); }, []);
 
   const patchQuote = (id, patch) => setQuotes((p) => p.map((q) => (q.id === id ? { ...q, ...patch } : q)));
   const addQuote = async () => { try { await api.createLoginQuote({ text: 'முதல் வரி\nஇரண்டாம் வரி', meaning: '' }); await loadQuotes(); } catch (e) { flash(e.message, 'err'); } };
@@ -131,12 +133,38 @@ export default function AppSettings() {
           <label>Password<input value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} /></label>
           <label>Role
             <select value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}>
-              <option value="user">User (invoicing only)</option>
+              <option value="user">User + Accountant (staff portal, invoicing, inventory, reports)</option>
               <option value="admin">Admin (full access)</option>
             </select>
           </label>
           <div style={{ display: 'flex', alignItems: 'flex-end' }}><button className="btn" onClick={addUser}>+ Add user</button></div>
         </div>
+        <p className="subtle" style={{ fontSize: 12 }}>New User+Accountant logins automatically get a staff file, so attendance, leaves, expenses and tasks work immediately.</p>
+      </section>
+
+      {/* ── Active sessions ── */}
+      <section className="fsec">
+        <div className="fsec-head">
+          <h3>Login Sessions <span className="hint">auto-logout after 60 min idle</span></h3>
+          <button className="btn xs" onClick={loadSessions}>↻ Refresh</button>
+        </div>
+        {sessions.length === 0 ? <p className="subtle">No sessions yet.</p> : (
+          <table className="data-table">
+            <thead><tr><th>User</th><th>IP</th><th>Device</th><th>Logged in</th><th>Last activity</th><th>Status</th></tr></thead>
+            <tbody>
+              {sessions.map((s) => (
+                <tr key={s.id}>
+                  <td className="strong">{s.username} <span className="subtle">· {s.role === 'user' ? 'accountant' : s.role}</span></td>
+                  <td className="mono" style={{ fontSize: 12 }}>{s.ip || '—'}</td>
+                  <td style={{ maxWidth: 220, fontSize: 12 }} className="subtle">{(s.userAgent || '—').slice(0, 60)}</td>
+                  <td style={{ fontSize: 12 }}>{new Date(s.loginAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                  <td style={{ fontSize: 12 }}>{new Date(s.lastSeen).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                  <td><span className={`badge ${s.status === 'active' ? 'rq-approved' : s.status === 'expired' ? 'rq-pending' : 'deleted'}`}>{s.status}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </section>
     </div>
   );

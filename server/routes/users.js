@@ -19,15 +19,35 @@ router.post('/', async (req, res, next) => {
   try {
     const { username, password, role } = req.body || {};
     if (!(username || '').trim() || !(password || '').trim()) return res.status(400).json({ error: 'Username and password are required' });
-    const user = await prisma.user.create({
-      data: { username: username.trim(), role: role === 'admin' ? 'admin' : 'user', passHash: hashPassword(password) },
-      select: { id: true, username: true, role: true },
+    const finalRole = role === 'admin' ? 'admin' : 'user';
+    const user = await prisma.$transaction(async (tx) => {
+      const u = await tx.user.create({
+        data: { username: username.trim(), role: finalRole, passHash: hashPassword(password) },
+        select: { id: true, username: true, role: true },
+      });
+      // Every staff/accountant login gets an employee file so attendance,
+      // leaves, expenses and tasks work out of the box.
+      if (finalRole === 'user') await tx.employee.create({ data: { name: u.username, userId: u.id } });
+      return u;
     });
     res.status(201).json(user);
   } catch (e) {
     if (e.code === 'P2002') return res.status(409).json({ error: 'That user ID already exists' });
     next(e);
   }
+});
+
+// Active / recent sessions — who is logged in, from where, since when.
+router.get('/sessions', async (req, res, next) => {
+  try {
+    const sessions = await prisma.session.findMany({ orderBy: { lastSeen: 'desc' }, take: 60 });
+    const now = Date.now();
+    res.json(sessions.map((s) => ({
+      id: s.id, username: s.username, role: s.role, ip: s.ip, userAgent: s.userAgent,
+      loginAt: s.loginAt, lastSeen: s.lastSeen,
+      status: s.loggedOutAt ? 'logged out' : (now - new Date(s.lastSeen).getTime() > 60 * 60 * 1000 ? 'expired' : 'active'),
+    })));
+  } catch (e) { next(e); }
 });
 
 router.put('/:id/password', async (req, res, next) => {

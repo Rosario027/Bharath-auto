@@ -44,6 +44,16 @@ export const api = {
   login: (username, password) => req('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
 
   changePassword: (currentPassword, newPassword) => req('/auth/change-password', { method: 'PUT', body: JSON.stringify({ currentPassword, newPassword }) }),
+  ping: () => req('/auth/ping', { method: 'POST' }),
+  logout: () => req('/auth/logout', { method: 'POST' }),
+  listSessions: () => req('/users/sessions'),
+
+  // inventory (admin + accountant)
+  listInventory: () => req('/inventory'),
+  createInventory: (data) => req('/inventory', { method: 'POST', body: JSON.stringify(data) }),
+  updateInventory: (id, data) => req(`/inventory/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteInventory: (id) => req(`/inventory/${id}`, { method: 'DELETE' }),
+  stockMovements: () => req('/inventory/movements'),
 
   // public login-screen content
   getLoginContent: () => req('/public/login-content'),
@@ -61,7 +71,8 @@ export const api = {
   // invoices
   listInvoices: (q = '') => req(`/invoices${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   getInvoice: (id) => req(`/invoices/${id}`),
-  nextNumber: (seriesId) => req(`/invoices/next-number${seriesId ? `?seriesId=${seriesId}` : ''}`),
+  nextNumber: (seriesId, docType) => req(`/invoices/next-number?${seriesId ? `seriesId=${seriesId}&` : ''}docType=${docType || 'invoice'}`),
+  staffSalary: (employeeId, month) => req(`/staff-admin/salary/${employeeId}?month=${month}`),
   createInvoice: (data) => req('/invoices', { method: 'POST', body: JSON.stringify(data) }),
   updateInvoice: (id, data) => req(`/invoices/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteInvoice: (id) => req(`/invoices/${id}`, { method: 'DELETE' }),
@@ -177,6 +188,9 @@ export const exporter = {
   docx: (invoice) => downloadBlob('/export/docx', invoice, `${invoice.invoiceNo || 'invoice'}.docx`),
   pdfById: (id, name) => downloadGet(`/export/${id}/pdf`, name || `invoice-${id}.pdf`),
   docxById: (id, name) => downloadGet(`/export/${id}/docx`, name || `invoice-${id}.docx`),
+  salesReport: (from, to) => downloadGet(`/reports/sales?from=${from}&to=${to}`, 'GST-Sales.xlsx'),
+  employeeReport: (month) => downloadGet(`/reports/employees?month=${month}`, 'Employee-Report.xlsx'),
+  stockReport: (from, to) => downloadGet(`/reports/stock?from=${from}&to=${to}`, 'Stock-Report.xlsx'),
 };
 
 export default api;

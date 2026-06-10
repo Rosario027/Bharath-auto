@@ -53,13 +53,21 @@ export async function changePassword(username, currentPassword, newPassword) {
   return { ok: true };
 }
 
-export async function authenticate(username, password) {
+export const IDLE_MS = 60 * 60 * 1000; // auto-logout after 60 min of inactivity
+
+export async function authenticate(username, password, meta = {}) {
   const user = await prisma.user.findUnique({
     where: { username: (username || '').trim() },
     include: { employee: { select: { id: true, name: true } } },
   });
   if (!user || !verifyPassword(password, user.passHash)) return null;
-  const payload = { u: user.username, role: user.role, exp: Date.now() + TTL_MS };
+
+  const sid = crypto.randomUUID();
+  await prisma.session.create({
+    data: { sid, username: user.username, role: user.role, ip: meta.ip || '', userAgent: meta.userAgent || '' },
+  });
+
+  const payload = { u: user.username, role: user.role, sid, exp: Date.now() + TTL_MS };
   return {
     token: sign(payload),
     user: {
@@ -71,6 +79,11 @@ export async function authenticate(username, password) {
   };
 }
 
+export async function endSession(sid) {
+  if (!sid) return;
+  try { await prisma.session.update({ where: { sid }, data: { loggedOutAt: new Date() } }); } catch { /* already gone */ }
+}
+
 function readToken(req) {
   const h = req.headers.authorization || '';
   return h.startsWith('Bearer ') ? h.slice(7) : '';
@@ -79,8 +92,24 @@ function readToken(req) {
 export function authRequired(req, res, next) {
   const payload = verifyToken(readToken(req));
   if (!payload) return res.status(401).json({ error: 'Please sign in again.' });
-  req.user = { username: payload.u, role: payload.role };
-  next();
+
+  // Enforce the 60-minute inactivity timeout via the session record.
+  (async () => {
+    if (!payload.sid) return res.status(401).json({ error: 'Session expired — please sign in again.' });
+    const session = await prisma.session.findUnique({ where: { sid: payload.sid } });
+    if (!session || session.loggedOutAt) return res.status(401).json({ error: 'Session ended — please sign in again.' });
+    if (Date.now() - new Date(session.lastSeen).getTime() > IDLE_MS) {
+      await endSession(payload.sid);
+      return res.status(401).json({ error: 'Session expired after inactivity — please sign in again.' });
+    }
+    // Sliding window: refresh lastSeen (throttled to one write per minute).
+    if (Date.now() - new Date(session.lastSeen).getTime() > 60 * 1000) {
+      await prisma.session.update({ where: { sid: payload.sid }, data: { lastSeen: new Date() } });
+    }
+    req.user = { username: payload.u, role: payload.role };
+    req.sid = payload.sid;
+    next();
+  })().catch(next);
 }
 
 export function adminRequired(req, res, next) {

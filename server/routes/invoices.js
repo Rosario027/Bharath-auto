@@ -9,13 +9,31 @@ function pad(n, width = 4) {
   return String(n).padStart(width, '0');
 }
 
-async function resolveSeries(client, seriesId) {
+async function resolveSeries(client, seriesId, docType = 'invoice') {
   if (seriesId) {
     const s = await client.invoiceSeries.findUnique({ where: { id: Number(seriesId) } });
     if (s) return s;
   }
-  return (await client.invoiceSeries.findFirst({ where: { isDefault: true } }))
+  return (await client.invoiceSeries.findFirst({ where: { docType, isDefault: true } }))
+    || (await client.invoiceSeries.findFirst({ where: { docType } }))
     || (await client.invoiceSeries.findFirst());
+}
+
+const DOC_TITLES = { invoice: null, 'credit-note': 'Credit Note', 'debit-note': 'Debit Note' };
+
+// Apply stock effects for invoice lines linked to inventory.
+// Sales invoices deduct stock; credit notes restore it.
+async function applyStock(tx, invoice, items, username) {
+  const sign = invoice.docType === 'credit-note' ? 1 : invoice.docType === 'debit-note' ? 0 : -1;
+  if (sign === 0) return;
+  for (const it of items) {
+    if (!it.inventoryItemId || !(Number(it.qty) > 0)) continue;
+    const delta = sign * Number(it.qty);
+    await tx.inventoryItem.update({ where: { id: it.inventoryItemId }, data: { quantity: { increment: delta } } }).catch(() => {});
+    await tx.stockMovement.create({
+      data: { itemId: it.inventoryItemId, delta, reason: `${invoice.docType === 'credit-note' ? 'Credit note' : 'Invoice'} ${invoice.invoiceNo}`, byUsername: username },
+    }).catch(() => {});
+  }
 }
 
 // Find the next FREE number for a series, starting at its nextSeq. Skips any
@@ -34,7 +52,7 @@ async function computeFreeNumber(client, series) {
 // Build a preview invoice number without consuming the sequence.
 router.get('/next-number', async (req, res, next) => {
   try {
-    const s = await resolveSeries(prisma, req.query.seriesId);
+    const s = await resolveSeries(prisma, req.query.seriesId, req.query.docType || 'invoice');
     if (!s) return res.json({ invoiceNo: '' });
     const { invoiceNo } = await computeFreeNumber(prisma, s);
     res.json({ invoiceNo, seriesId: s.id });
@@ -106,6 +124,7 @@ function normalizeItems(items = [], defaultGstRate = 18) {
         ? Number(defaultGstRate) || 0
         : Number(it.gstRate) || 0,
       gstInclusive: !!it.gstInclusive,
+      inventoryItemId: it.inventoryItemId ? Number(it.inventoryItemId) : null,
       total: (Number(it.qty) || 0) * (Number(it.price) || 0),
     }));
 }
@@ -133,9 +152,12 @@ async function resolveCustomerId(tx, body) {
 }
 
 function buildScalarData(body, totals, settings) {
+  const docType = ['credit-note', 'debit-note'].includes(body.docType) ? body.docType : 'invoice';
   return {
+    docType,
+    againstInvoiceNo: body.againstInvoiceNo ?? '',
     invoiceDate: body.invoiceDate ? new Date(body.invoiceDate) : new Date(),
-    title: body.title ?? settings.invoiceTitle,
+    title: body.title ?? (DOC_TITLES[docType] || settings.invoiceTitle),
     copyType: body.copyType ?? settings.invoiceCopy,
     transportMode: body.transportMode ?? 'By Road',
     poRefNo: body.poRefNo ?? '',
@@ -177,7 +199,7 @@ router.post('/', async (req, res, next) => {
 
     const created = await prisma.$transaction(async (tx) => {
       const customerId = await resolveCustomerId(tx, body);
-      const series = await resolveSeries(tx, body.seriesId);
+      const series = await resolveSeries(tx, body.seriesId, body.docType || 'invoice');
 
       // Manual number → use as-is (uniqueness enforced). Otherwise auto-generate
       // the next free number from the series and advance its sequence past it.
@@ -202,6 +224,7 @@ router.post('/', async (req, res, next) => {
       if (advanceTo != null) {
         await tx.invoiceSeries.update({ where: { id: series.id }, data: { nextSeq: advanceTo } });
       }
+      await applyStock(tx, inv, items, req.user?.username || '');
       return inv;
     });
 

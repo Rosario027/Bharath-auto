@@ -2,7 +2,44 @@ import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, exporter } from '../api.js';
 import { formatINR } from '../utils/money.js';
-import { useSettings } from '../App.jsx';
+import { useSettings, useAuth } from '../App.jsx';
+
+// Simple SVG pie for the task overview.
+function TaskPie({ data }) {
+  const entries = [
+    { label: 'Yet to be taken', value: data.assigned, color: '#e8a13b' },
+    { label: 'Processing', value: data.processing, color: '#4f8fd5' },
+    { label: 'Completed', value: data.completed, color: '#5B9B36' },
+  ];
+  const total = entries.reduce((s, e) => s + e.value, 0);
+  let acc = 0;
+  const R = 15.9155;
+  return (
+    <div className="pie-wrap">
+      <svg viewBox="0 0 42 42" className="pie">
+        <circle cx="21" cy="21" r={R} fill="none" stroke="#eef1f5" strokeWidth="7" />
+        {total > 0 && entries.map((e, i) => {
+          const frac = e.value / total;
+          const el = (
+            <circle key={i} cx="21" cy="21" r={R} fill="none" stroke={e.color} strokeWidth="7"
+              strokeDasharray={`${frac * 100} ${100 - frac * 100}`} strokeDashoffset={25 - acc * 100} />
+          );
+          acc += frac;
+          return el;
+        })}
+        <text x="21" y="20" textAnchor="middle" fontSize="8" fontWeight="800" fill="#1f2530">{total}</text>
+        <text x="21" y="27" textAnchor="middle" fontSize="3.4" fill="#7b8696">tasks</text>
+      </svg>
+      <div className="pie-legend">
+        {entries.map((e, i) => (
+          <div key={i}><span className="dot" style={{ background: e.color }} /> {e.label}: <b>{e.value}</b></div>
+        ))}
+        <div><span className="dot" style={{ background: '#98a2b3' }} /> Admin to-do: <b>{data.adminTodo}</b></div>
+        <div><span className="dot" style={{ background: '#E8732B' }} /> Upcoming (due): <b>{data.upcoming}</b></div>
+      </div>
+    </div>
+  );
+}
 
 function fmtDate(d) {
   const dt = new Date(d);
@@ -12,6 +49,8 @@ function fmtDate(d) {
 export default function Dashboard() {
   const nav = useNavigate();
   const { settings } = useSettings();
+  const { isAdmin } = useAuth();
+  const [taskStats, setTaskStats] = useState(null);
   const [invoices, setInvoices] = useState([]);
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
@@ -29,6 +68,7 @@ export default function Dashboard() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.nextNumber().then((r) => setNextNo(r.invoiceNo)).catch(() => {}); }, [invoices]);
+  useEffect(() => { if (isAdmin) api.staffSummary().then((s) => setTaskStats(s.tasks)).catch(() => {}); }, [isAdmin]);
 
   useEffect(() => {
     const t = setTimeout(() => load(q), 250);
@@ -87,6 +127,16 @@ export default function Dashboard() {
           <div className="stat-value sm">{nextNo || '—'}</div>
         </div>
       </div>
+
+      {isAdmin && taskStats && (
+        <section className="fsec">
+          <div className="fsec-head">
+            <h3>Work Overview</h3>
+            <button className="btn xs" onClick={() => nav('/staff-tasks')}>Open Tasks →</button>
+          </div>
+          <TaskPie data={taskStats} />
+        </section>
+      )}
 
       <div className="toolbar">
         <input className="search" placeholder="Search invoice no or customer…" value={q} onChange={(e) => setQ(e.target.value)} />

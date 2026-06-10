@@ -10,7 +10,7 @@ export default function StaffTasksAdmin() {
   const [emps, setEmps] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [filter, setFilter] = useState('all');
-  const [form, setForm] = useState({ employeeId: '', title: '', description: '', dueDate: '' });
+  const [form, setForm] = useState({ employeeId: '', title: '', description: '', dueDate: '', priority: 'medium' });
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState(null);
   const flash = (msg, kind = 'ok') => { setToast({ msg, kind }); setTimeout(() => setToast(null), 3000); };
@@ -28,9 +28,9 @@ export default function StaffTasksAdmin() {
     setBusy(true);
     try {
       await api.assignTask(form);
-      setForm({ employeeId: form.employeeId, title: '', description: '', dueDate: '' });
+      setForm({ employeeId: form.employeeId, title: '', description: '', dueDate: '', priority: 'medium' });
       await load();
-      flash('Task assigned — the staff member will see it on their dashboard');
+      flash(form.employeeId ? 'Task assigned — the staff member will see it on their dashboard' : 'Task added to your (admin) list');
     } catch (e2) { flash(e2.message, 'err'); } finally { setBusy(false); }
   };
 
@@ -55,16 +55,23 @@ export default function StaffTasksAdmin() {
       <section className="fsec">
         <h3>Assign a new task</h3>
         <form onSubmit={assign} className="grid2">
-          <label>Staff member *
+          <label>Assign to
             <select value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })}>
-              <option value="">Select…</option>
+              <option value="">⭐ Myself (Admin)</option>
               {emps.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+          </label>
+          <label>Priority
+            <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
+              <option value="low">🟢 Low</option>
+              <option value="medium">🟡 Medium</option>
+              <option value="high">🔴 High</option>
             </select>
           </label>
           <label>Due date<input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></label>
           <label className="full">Task title *<input value={form.title} placeholder="e.g. Install control panel at Saravana Mills" onChange={(e) => setForm({ ...form, title: e.target.value })} /></label>
           <label className="full">Description<textarea rows={2} value={form.description} placeholder="Details, location, materials…" onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
-          <div><button className="btn primary" type="submit" disabled={busy || !form.employeeId || !form.title.trim()}>{busy ? 'Assigning…' : 'Assign task'}</button></div>
+          <div><button className="btn primary" type="submit" disabled={busy || !form.title.trim()}>{busy ? 'Assigning…' : 'Assign task'}</button></div>
         </form>
       </section>
 
@@ -79,12 +86,13 @@ export default function StaffTasksAdmin() {
       <div className="card table-card">
         {view.length === 0 ? <div className="empty">No tasks here.</div> : (
           <table className="data-table">
-            <thead><tr><th>Task</th><th>Staff</th><th>Due</th><th>Status</th><th>Staff comments</th><th className="r">Actions</th></tr></thead>
+            <thead><tr><th>Task</th><th>Assigned To</th><th>Priority</th><th>Due</th><th>Status</th><th>Staff comments</th><th className="r">Actions</th></tr></thead>
             <tbody>
               {view.map((t) => (
                 <tr key={t.id}>
                   <td><b>{t.title}</b>{t.description && <div className="subtle" style={{ fontSize: 12 }}>{t.description}</div>}</td>
-                  <td>{t.employee?.name || '—'}</td>
+                  <td>{t.employee?.name || <span className="badge" style={{ background: '#fef3ec', color: '#b9651a' }}>Admin (self)</span>}</td>
+                  <td><span className={`badge pr-${t.priority}`}>{t.priority}</span></td>
                   <td>{fmtDate(t.dueDate)}</td>
                   <td><span className={`badge rq-${t.status === 'completed' ? 'approved' : t.status === 'processing' ? 'pending' : 'rejected'}`} style={{ textTransform: 'none' }}>{TASK_LABELS[t.status]}</span></td>
                   <td style={{ maxWidth: 260 }}>{t.staffComment ? <i>"{t.staffComment}"</i> : <span className="subtle">—</span>}</td>

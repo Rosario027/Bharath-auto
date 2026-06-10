@@ -12,6 +12,19 @@ export async function ensureUsers() {
     await prisma.user.create({ data: { username: process.env.USER_USER || 'User', role: 'user', passHash: hashPassword(process.env.USER_PASS || 'User123') } });
     console.log('[seed] Default users created (Admin / User).');
   }
+  await ensureStaffProfiles();
+}
+
+// Every non-admin login must be able to use the staff portal (attendance,
+// leaves, expenses, tasks, site visits). Create a minimal Employee file for
+// any 'user'-role account that doesn't have one yet (covers User/User123 and
+// any account created before this rule existed). Admin can fill in details later.
+export async function ensureStaffProfiles() {
+  const unlinked = await prisma.user.findMany({ where: { role: 'user', employee: null } });
+  for (const u of unlinked) {
+    await prisma.employee.create({ data: { name: u.username, userId: u.id } });
+    console.log(`[seed] Staff profile created for login "${u.username}".`);
+  }
 }
 
 export async function ensureDefaultSeries(settings) {
@@ -28,6 +41,11 @@ export async function ensureDefaultSeries(settings) {
     });
     console.log('[seed] Default invoice series created.');
   }
+  // Credit / debit note series (own numbering, editable by admin & accountant).
+  const cn = await prisma.invoiceSeries.count({ where: { docType: 'credit-note' } });
+  if (cn === 0) await prisma.invoiceSeries.create({ data: { name: 'Credit Note', prefix: 'CN-', nextSeq: 1, isDefault: true, docType: 'credit-note' } });
+  const dn = await prisma.invoiceSeries.count({ where: { docType: 'debit-note' } });
+  if (dn === 0) await prisma.invoiceSeries.create({ data: { name: 'Debit Note', prefix: 'DN-', nextSeq: 1, isDefault: true, docType: 'debit-note' } });
 }
 
 const KURALS = [

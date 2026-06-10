@@ -15,6 +15,8 @@ const todayISO = () => {
 function defaultInvoice(settings) {
   return {
     invoiceNo: '',
+    docType: 'invoice',
+    againstInvoiceNo: '',
     invoiceDate: todayISO(),
     title: settings.invoiceTitle,
     copyType: settings.invoiceCopy,
@@ -40,7 +42,7 @@ function defaultInvoice(settings) {
 }
 
 function newItem(settings) {
-  return { description: '', hsnCode: '', qty: 1, unit: 'Nos', price: 0, gstRate: settings?.defaultGstRate ?? 18, gstInclusive: false };
+  return { description: '', hsnCode: '', qty: 1, unit: 'Nos', price: 0, gstRate: settings?.defaultGstRate ?? 18, gstInclusive: false, inventoryItemId: null };
 }
 
 function fmtDateTime(d) {
@@ -83,8 +85,9 @@ export default function InvoiceEditor() {
   const [busy, setBusy] = useState('');
   const [toast, setToast] = useState(null);
 
-  // Invoice series
+  // Invoice series + inventory
   const [series, setSeries] = useState([]);
+  const [inventory, setInventory] = useState([]);
 
   // Client search autofill (gated behind an explicit "Find existing client")
   const [clientSearchOpen, setClientSearchOpen] = useState(false);
@@ -127,6 +130,7 @@ export default function InvoiceEditor() {
       let custList = [];
       let seriesList = [];
       try { seriesList = await api.listSeries(); if (alive) setSeries(seriesList); } catch { /* ignore */ }
+      try { const inv2 = await api.listInventory(); if (alive) setInventory(inv2); } catch { /* ignore */ }
       // Client data is admin-only — users never fetch it.
       if (isAdmin) {
         try { custList = await api.listCustomers(); if (alive) setCustomers(custList); } catch { /* ignore */ }
@@ -137,10 +141,11 @@ export default function InvoiceEditor() {
         if (alive) setInv(toForm(data));
       } else {
         const base = defaultInvoice(settings);
-        const def = seriesList.find((s) => s.isDefault) || seriesList[0];
+        const invSeries = seriesList.filter((s) => (s.docType || 'invoice') === 'invoice');
+        const def = invSeries.find((s) => s.isDefault) || invSeries[0];
         base.seriesId = def?.id ?? null;
         try {
-          const { invoiceNo } = await api.nextNumber(base.seriesId);
+          const { invoiceNo } = await api.nextNumber(base.seriesId, 'invoice');
           base.invoiceNo = invoiceNo;
         } catch { /* ignore */ }
         // Prefill from ?client=:id (e.g. "New invoice for this client")
@@ -189,21 +194,33 @@ export default function InvoiceEditor() {
       buyerStateCode: c.stateCode,
     });
   };
-  // ── Series ──
+  // ── Series & document type ──
   const changeSeries = async (sid) => {
     const id2 = Number(sid);
     set({ seriesId: id2 });
     if (!savedId) {
-      try { const { invoiceNo } = await api.nextNumber(id2); set({ seriesId: id2, invoiceNo }); } catch { /* ignore */ }
+      try { const { invoiceNo } = await api.nextNumber(id2, inv.docType); set({ seriesId: id2, invoiceNo }); } catch { /* ignore */ }
+    }
+  };
+
+  const DOC_LABELS = { invoice: settings.invoiceTitle, 'credit-note': 'Credit Note', 'debit-note': 'Debit Note' };
+  const changeDocType = async (dt) => {
+    const list = series.filter((s) => (s.docType || 'invoice') === dt);
+    const def = list.find((s) => s.isDefault) || list[0];
+    const patch = { docType: dt, title: DOC_LABELS[dt] || settings.invoiceTitle, seriesId: def?.id ?? null };
+    set(patch);
+    if (!savedId) {
+      try { const { invoiceNo } = await api.nextNumber(def?.id, dt); set({ ...patch, invoiceNo }); } catch { /* ignore */ }
     }
   };
 
   // Reset the editor to a fresh new invoice so the user can raise the next one.
   const resetToNew = async () => {
     const base = defaultInvoice(settings);
-    const def = series.find((s) => s.isDefault) || series[0];
+    const invSeries = series.filter((s) => (s.docType || 'invoice') === 'invoice');
+    const def = invSeries.find((s) => s.isDefault) || invSeries[0];
     base.seriesId = def?.id ?? null;
-    try { const { invoiceNo } = await api.nextNumber(base.seriesId); base.invoiceNo = invoiceNo; } catch { /* ignore */ }
+    try { const { invoiceNo } = await api.nextNumber(base.seriesId, 'invoice'); base.invoiceNo = invoiceNo; } catch { /* ignore */ }
     setSavedId(null);
     setClientQuery(''); setClientSearchOpen(false);
     setInv(base);
@@ -361,9 +378,19 @@ export default function InvoiceEditor() {
         <section className="fsec">
           <h3>Invoice Details</h3>
           <div className="grid2">
+            <label>Document Type
+              <select value={inv.docType || 'invoice'} disabled={!!savedId} onChange={(e) => changeDocType(e.target.value)}>
+                <option value="invoice">Tax Invoice</option>
+                <option value="credit-note">Credit Note</option>
+                <option value="debit-note">Debit Note</option>
+              </select>
+            </label>
+            {(inv.docType === 'credit-note' || inv.docType === 'debit-note') && (
+              <label>Against Invoice No<input value={inv.againstInvoiceNo || ''} placeholder="Original invoice e.g. BA/TR/PS-0022" onChange={(e) => set({ againstInvoiceNo: e.target.value })} /></label>
+            )}
             <label>Series
               <select value={inv.seriesId ?? ''} disabled={!!savedId} onChange={(e) => changeSeries(e.target.value)}>
-                {series.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.prefix})</option>)}
+                {series.filter((s) => (s.docType || 'invoice') === (inv.docType || 'invoice')).map((s) => <option key={s.id} value={s.id}>{s.name} ({s.prefix})</option>)}
               </select>
             </label>
             <label>Invoice No <span className="hint">auto</span>
@@ -440,6 +467,26 @@ export default function InvoiceEditor() {
                   />
                   <button className="btn xs danger item-del" onClick={() => removeItem(i)} disabled={inv.items.length === 1} title="Remove item">✕</button>
                 </div>
+                {inventory.length > 0 && (
+                  <div className="stock-pick">
+                    <select
+                      value={it.inventoryItemId || ''}
+                      onChange={(e) => {
+                        const sid = Number(e.target.value) || null;
+                        const stock = inventory.find((x) => x.id === sid);
+                        setItem(i, stock
+                          ? { inventoryItemId: sid, description: it.description || stock.name, unit: stock.unit || it.unit, hsnCode: it.hsnCode || stock.hsnCode }
+                          : { inventoryItemId: null });
+                      }}
+                    >
+                      <option value="">📦 Manual entry (no stock link)</option>
+                      {inventory.map((x) => (
+                        <option key={x.id} value={x.id}>📦 {x.name} — {x.quantity} {x.unit} @ {x.location || 'store'}</option>
+                      ))}
+                    </select>
+                    {it.inventoryItemId ? <span className="hint">stock will be {inv.docType === 'credit-note' ? 'restored' : 'reduced'} on save</span> : null}
+                  </div>
+                )}
                 <div className="item-card-fields">
                   <label>HSN<input value={it.hsnCode} onChange={(e) => setItem(i, { hsnCode: e.target.value })} /></label>
                   <label>Qty<input type="number" step="any" value={it.qty} onChange={(e) => setItem(i, { qty: e.target.value })} /></label>

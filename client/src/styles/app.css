@@ -133,6 +133,36 @@ body {
 .badge.rq-approved { background: #e7f6ec; color: #1f8f4e; }
 .badge.rq-rejected { background: #fdecea; color: #c0392b; }
 
+/* ── Idle timeout modal ── */
+.idle-overlay { position: fixed; inset: 0; z-index: 200; background: rgba(15,20,26,.55); backdrop-filter: blur(3px); display: grid; place-items: center; }
+.idle-modal { background: #fff; border-radius: 16px; padding: 28px 30px; max-width: 380px; width: 92vw; box-shadow: 0 30px 80px rgba(0,0,0,.35); text-align: center; }
+.idle-modal h2 { margin: 0 0 10px; font-size: 22px; }
+.idle-modal p { margin: 6px 0; font-size: 14px; }
+.idle-actions { display: flex; gap: 10px; justify-content: center; margin-top: 18px; flex-wrap: wrap; }
+
+/* ── Task pie ── */
+.pie-wrap { display: flex; align-items: center; gap: 26px; flex-wrap: wrap; }
+.pie { width: 150px; height: 150px; transform: rotate(0deg); }
+.pie-legend { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.pie-legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+
+/* ── Priority badges ── */
+.badge.pr-low { background: #e7f6ec; color: #1f8f4e; }
+.badge.pr-medium { background: #fff4e5; color: #b9651a; }
+.badge.pr-high { background: #fdecea; color: #c0392b; }
+
+/* ── Inventory ── */
+.low-stock td { background: #fff8f5; }
+.stock-pick { display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.stock-pick select { max-width: 420px; font-size: 12.5px; }
+
+/* ── Salary box ── */
+.salary-box { margin-top: 14px; border: 1px dashed var(--line); border-radius: 10px; padding: 12px 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; background: #fcfcfd; }
+.salary-box > div { display: flex; flex-direction: column; }
+.salary-box span { font-size: 10.5px; color: var(--muted); text-transform: uppercase; }
+.salary-box b { font-size: 15px; }
+.salary-box .sal-total b { font-size: 19px; color: var(--brand-green); }
+
 /* ── Site visits ── */
 .badge.sv-assigned { background: #eef2ff; color: #4f5bd5; }
 .badge.sv-open { background: #fff4e5; color: #b9651a; }

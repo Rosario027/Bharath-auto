@@ -25,6 +25,10 @@ function scalarData(b) {
     email: b.email ?? '',
     vehicleNo: b.vehicleNo ?? '',
     insuranceExpiry: b.insuranceExpiry ? new Date(b.insuranceExpiry) : null,
+    monthlySalary: Number(b.monthlySalary) || 0,
+    satOff: !!b.satOff,
+    sunOff: b.sunOff === undefined ? true : !!b.sunOff,
+    sunMultiplier: Number(b.sunMultiplier) > 0 ? Number(b.sunMultiplier) : 2,
     active: b.active === undefined ? true : !!b.active,
   };
 }
