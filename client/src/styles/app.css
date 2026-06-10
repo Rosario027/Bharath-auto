@@ -132,6 +132,43 @@ body {
 .badge.rq-pending { background: #fff4e5; color: #b9651a; }
 .badge.rq-approved { background: #e7f6ec; color: #1f8f4e; }
 .badge.rq-rejected { background: #fdecea; color: #c0392b; }
+
+/* ── Site visits ── */
+.badge.sv-assigned { background: #eef2ff; color: #4f5bd5; }
+.badge.sv-open { background: #fff4e5; color: #b9651a; }
+.badge.sv-follow-up { background: #e8f3fd; color: #2a6fb0; }
+.badge.sv-closed { background: #f1f3f5; color: #98a2b3; }
+
+/* step wizard */
+.wiz-steps { display: flex; gap: 6px; margin-bottom: 16px; overflow-x: auto; padding-bottom: 4px; }
+.wiz-step { display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); background: #fff; border-radius: 22px; padding: 7px 13px; cursor: pointer; white-space: nowrap; font-size: 12px; color: var(--muted); font-weight: 600; }
+.wiz-step.on { border-color: var(--brand-orange); color: var(--brand-orange); background: #fef3ec; }
+.wiz-step.done { border-color: var(--brand-green); color: var(--brand-green); }
+.wiz-num { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: currentColor; font-size: 11px; }
+.wiz-step .wiz-num { color: inherit; background: transparent; border: 1.5px solid currentColor; }
+.wiz-step.on .wiz-num { background: var(--brand-orange); color: #fff; border-color: var(--brand-orange); }
+.wiz-step.done .wiz-num { background: var(--brand-green); color: #fff; border-color: var(--brand-green); }
+.app-root.is-mobile .wiz-step .wiz-name { display: none; }
+.app-root.is-mobile .wiz-step.on .wiz-name { display: inline; }
+.wiz-nav { display: flex; gap: 10px; margin-top: 18px; border-top: 1px dashed var(--line); padding-top: 14px; }
+.app-root.is-mobile .wiz-nav .btn { padding: 13px 18px; font-size: 15px; }
+
+/* detail field grid */
+.sv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; }
+.sv-field { display: flex; flex-direction: column; }
+.sv-field span { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.sv-field b { font-size: 13.5px; font-weight: 600; }
+.app-root.is-mobile .sv-grid { grid-template-columns: 1fr; }
+
+/* tranche timeline */
+.tranche-list { display: flex; flex-direction: column; gap: 12px; }
+.tranche { border: 1px solid var(--line); border-left: 4px solid var(--brand-orange); border-radius: 10px; padding: 12px 14px; background: #fcfcfd; }
+.tr-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tr-no { font-weight: 800; font-size: 13px; }
+.tr-meta { font-size: 11px; color: var(--muted); margin-left: auto; }
+.tr-body { margin-top: 8px; font-size: 13.5px; }
+.tr-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.tr-tags span { font-size: 11px; background: #f1f3f5; border-radius: 14px; padding: 3px 10px; color: var(--ink); }
 .sb-backdrop { position: fixed; inset: 56px 0 0 0; background: rgba(0,0,0,.4); z-index: 25; }
 
 .app-main { flex: 1; min-width: 0; overflow-y: auto; }
@@ -276,6 +313,12 @@ textarea { resize: vertical; }
    Mobile layout — applied via .is-mobile on .app-root
    (Web/Mobile toggle or auto width). Sidebar = slide-in drawer.
    ─────────────────────────────────────────────── */
+.app-root.is-mobile .topbar { gap: 8px; padding: 0 10px; }
+.app-root.is-mobile .user-chip { display: none; }   /* keep Logout, drop the chip on small screens */
+.app-root.is-mobile .topbar-user { margin-left: 0; }
+.app-root.is-mobile .brand-name { font-size: 13px; }
+.app-root.is-mobile .brand-sub { font-size: 9px; letter-spacing: 1.5px; }
+
 .app-root.is-mobile .sidebar {
   position: fixed; top: 56px; bottom: 0; left: 0; width: 240px; z-index: 30;
   box-shadow: 6px 0 24px rgba(0,0,0,.3);

@@ -104,6 +104,15 @@ export const api = {
   myTasks: () => req('/me/tasks'),
   updateMyTask: (id, data) => req(`/me/tasks/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 
+  // site visits (staff: own; admin: all)
+  listSiteVisits: (status) => req(`/site-visits${status ? `?status=${status}` : ''}`),
+  getSiteVisit: (id) => req(`/site-visits/${id}`),
+  createSiteVisit: (data) => req('/site-visits', { method: 'POST', body: JSON.stringify(data) }),
+  updateSiteVisit: (id, data) => req(`/site-visits/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  assignSiteVisit: (id, employeeId) => req(`/site-visits/${id}`, { method: 'PUT', body: JSON.stringify({ assignEmployeeId: employeeId }) }),
+  addSiteVisitUpdate: (id, data) => req(`/site-visits/${id}/updates`, { method: 'POST', body: JSON.stringify(data) }),
+  deleteSiteVisit: (id) => req(`/site-visits/${id}`, { method: 'DELETE' }),
+
   // staff admin (approvals, tasks, attendance visibility)
   staffSummary: () => req('/staff-admin/summary'),
   adminAttendance: (params = '') => req(`/staff-admin/attendance${params}`),

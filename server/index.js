@@ -17,6 +17,7 @@ import usersRouter from './routes/users.js';
 import employeesRouter from './routes/employees.js';
 import meRouter from './routes/me.js';
 import staffAdminRouter from './routes/staffAdmin.js';
+import siteVisitsRouter from './routes/siteVisits.js';
 import { authRequired, adminRequired } from './lib/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -34,6 +35,7 @@ app.use('/api/users', usersRouter);                        // admin-only (guarde
 app.use('/api/employees', employeesRouter);                // admin-only (guarded in router)
 app.use('/api/me', meRouter);                              // staff self-service (own data only)
 app.use('/api/staff-admin', staffAdminRouter);             // admin-only (guarded in router)
+app.use('/api/site-visits', siteVisitsRouter);             // staff: own visits; admin: all
 app.use('/api/settings', authRequired, settingsRouter);   // GET both; PUT admin-only (guarded in router)
 app.use('/api/invoices', authRequired, invoicesRouter);   // both roles can raise invoices
 app.use('/api/customers', adminRequired, customersRouter); // client data — admin only

@@ -14,6 +14,9 @@ import AccountSettings from './pages/AccountSettings.jsx';
 import StaffHome from './pages/StaffHome.jsx';
 import StaffTasksAdmin from './pages/StaffTasksAdmin.jsx';
 import StaffApprovals from './pages/StaffApprovals.jsx';
+import SiteVisits from './pages/SiteVisits.jsx';
+import SiteVisitNew from './pages/SiteVisitNew.jsx';
+import SiteVisitDetail from './pages/SiteVisitDetail.jsx';
 
 const IconMonitor = () => (
   <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></svg>
@@ -75,6 +78,12 @@ function Sidebar({ onNavigate, isAdmin, isStaff }) {
             <span className="nav-label">My Workspace</span>
           </NavLink>
         )}
+        {isStaff && (
+          <NavLink to="/my-visits" onClick={onNavigate} className={() => 'nav-item' + (loc.pathname.startsWith('/my-visits') || loc.pathname.startsWith('/site-visits') ? ' active' : '')}>
+            <span className="nav-icon">📍</span>
+            <span className="nav-label">Site Visits</span>
+          </NavLink>
+        )}
 
         <div className="nav-group">
           <button
@@ -98,6 +107,12 @@ function Sidebar({ onNavigate, isAdmin, isStaff }) {
           <NavLink to="/clients" onClick={onNavigate} className={() => 'nav-item' + (loc.pathname.startsWith('/clients') ? ' active' : '')}>
             <span className="nav-icon">👥</span>
             <span className="nav-label">Clients</span>
+          </NavLink>
+        )}
+        {isAdmin && (
+          <NavLink to="/site-visits" onClick={onNavigate} className={() => 'nav-item' + (loc.pathname.startsWith('/site-visits') ? ' active' : '')}>
+            <span className="nav-icon">📍</span>
+            <span className="nav-label">Site Visits</span>
           </NavLink>
         )}
         {isAdmin && (
@@ -222,6 +237,11 @@ export default function App() {
                 <Route path="/staff/:id" element={<AdminOnly><EmployeeEdit /></AdminOnly>} />
                 <Route path="/staff-tasks" element={<AdminOnly><StaffTasksAdmin /></AdminOnly>} />
                 <Route path="/staff-approvals" element={<AdminOnly><StaffApprovals /></AdminOnly>} />
+                <Route path="/site-visits" element={<SiteVisits />} />
+                <Route path="/my-visits" element={<SiteVisits />} />
+                <Route path="/site-visits/new" element={<SiteVisitNew />} />
+                <Route path="/my-visits/new" element={<SiteVisitNew />} />
+                <Route path="/site-visits/:id" element={<SiteVisitDetail />} />
                 <Route path="/app-settings" element={<AdminOnly><AppSettings /></AdminOnly>} />
                 <Route path="/account" element={<AccountSettings />} />
                 <Route path="*" element={<Navigate to="/" replace />} />

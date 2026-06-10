@@ -109,6 +109,90 @@ model Employee {
   leaves          LeaveRequest[]
   expenses        ExpenseClaim[]
   tasks           StaffTask[]
+  siteVisits      SiteVisit[]
+}
+
+// ──────────────────────────────────────────────────────────────
+// Site visits — replaces the manual "Site Visits.xlsx" sheet.
+// The master record holds the latest state; every submission
+// (first visit or any follow-up) is stored as a SiteVisitUpdate
+// "tranche" so admin sees the full history with timestamps.
+// ──────────────────────────────────────────────────────────────
+model SiteVisit {
+  id         Int       @id @default(autoincrement())
+  refNo      String    @unique @default("") // SV-0001 …
+  employeeId Int?      // current assignee (sales executive)
+  employee   Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  createdBy  String    @default("")
+
+  // Visit
+  visitDate String @default("") // yyyy-mm-dd (first visit)
+
+  // Customer
+  customerName  String @default("")
+  contactPerson String @default("")
+  contactPhone  String @default("")
+  altPhone      String @default("")
+
+  // Location
+  googleLocation String @default("") // GPS / maps link
+  address        String @default("")
+  district       String @default("")
+  buildingSize   String @default("")
+
+  // Architect / Interior / Civil Engineer
+  proType  String @default("") // Ar | Ir | Civil Er
+  proName  String @default("")
+  proPhone String @default("")
+
+  // Builder & contractor
+  builderName          String @default("")
+  builderPhone         String @default("")
+  electricalContractor String @default("")
+
+  // Lead & requirement
+  leadSource         String @default("")
+  projectType        String @default("")
+  requirementSummary String @default("")
+  productsDiscussed  String @default("")
+  homeTheatre        String @default("") // Yes | No
+
+  // Sales pipeline (latest state — synced from the newest tranche)
+  visitType      String  @default("new") // new | follow up
+  status         String  @default("assigned") // assigned | open | follow-up | closed
+  quotationNo    String  @default("")
+  quotationValue Float   @default(0)
+  nextFollowUp   String  @default("") // yyyy-mm-dd
+  whoIsFollowing String  @default("")
+  probability    Float   @default(0) // %
+  remarks        String  @default("")
+
+  updates SiteVisitUpdate[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// One tranche = one field submission (initial visit or follow-up round).
+model SiteVisitUpdate {
+  id          Int       @id @default(autoincrement())
+  siteVisitId Int
+  siteVisit   SiteVisit @relation(fields: [siteVisitId], references: [id], onDelete: Cascade)
+  tranche     Int       @default(1)
+  byUsername  String    @default("")
+
+  visitDate         String @default("")
+  visitType         String @default("")
+  status            String @default("")
+  productsDiscussed String @default("")
+  quotationNo       String @default("")
+  quotationValue    Float  @default(0)
+  nextFollowUp      String @default("")
+  whoIsFollowing    String @default("")
+  probability       Float  @default(0)
+  summary           String @default("") // what happened on this visit / remarks
+
+  createdAt DateTime @default(now())
 }
 
 model Attendance {
