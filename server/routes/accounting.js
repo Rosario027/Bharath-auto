@@ -2,10 +2,28 @@
 // Double-entry vouchers with balance validation, MCA Rule 11(g) edit log,
 // trial balance / P&L / balance sheet / cash flow, fixed-asset schedule.
 import { Router } from 'express';
+import ExcelJS from 'exceljs';
+import PdfPrinter from 'pdfmake/src/printer.js';
 import { prisma } from '../lib/db.js';
 import { authRequired } from '../lib/auth.js';
 import { isValidDate } from '../lib/dates.js';
 import { ensureCoA, ensureDemoBooks, nextVoucherNo, syncAllInvoices, VTYPES } from '../lib/accounting.js';
+
+const printer = new PdfPrinter({ Helvetica: { normal: 'Helvetica', bold: 'Helvetica-Bold', italics: 'Helvetica-Oblique', bolditalics: 'Helvetica-BoldOblique' } });
+const headStyle = (row) => { row.font = { bold: true, color: { argb: 'FFFFFFFF' } }; row.eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8732B' } }; }); };
+async function sendXlsx(res, wb, name) {
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+  await wb.xlsx.write(res);
+  res.end();
+}
+function sendPdf(res, docDef, name) {
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+  const doc = printer.createPdfKitDocument(docDef);
+  doc.pipe(res);
+  doc.end();
+}
 
 const router = Router();
 router.use(authRequired);
@@ -381,6 +399,288 @@ router.delete('/assets/:id', async (req, res, next) => {
     if (e.code === 'P2025') return res.status(404).json({ error: 'Asset not found' });
     next(e);
   }
+});
+
+// ── Accounts overview (dashboard panel on the accounting tab) ──
+router.get('/overview', async (req, res, next) => {
+  try {
+    const all = await ledgerBalances(req.query.from, req.query.to);
+    const income = r2(all.filter((l) => l.nature === 'income').reduce((s, l) => s + -l.net, 0));
+    const expense = r2(all.filter((l) => l.nature === 'expense').reduce((s, l) => s + l.net, 0));
+    const assets = r2(all.filter((l) => l.nature === 'asset' && l.net > 0).reduce((s, l) => s + l.net, 0));
+    const liabilities = r2(all.filter((l) => l.nature === 'liability' && l.net < 0).reduce((s, l) => s + -l.net, 0));
+    const cashBank = r2(all.filter((l) => ['Cash-in-Hand', 'Bank Accounts'].includes(l.group)).reduce((s, l) => s + l.net, 0));
+    const debtors = r2(all.filter((l) => l.group === 'Sundry Debtors' && l.net > 0).reduce((s, l) => s + l.net, 0));
+    const creditors = r2(all.filter((l) => l.group === 'Sundry Creditors' && l.net < 0).reduce((s, l) => s + -l.net, 0));
+    res.json({ income, expense, netProfit: r2(income - expense), assets, liabilities, cashBank, debtors, creditors });
+  } catch (e) { next(e); }
+});
+
+// ── Bank statement import — template download ──
+router.get('/bank-template', async (req, res, next) => {
+  try {
+    await ensureCoA();
+    const ledgers = await prisma.accLedger.findMany({ include: { group: true }, orderBy: { name: 'asc' } });
+    const wb = new ExcelJS.Workbook();
+
+    const info = wb.addWorksheet('How to Fill');
+    info.columns = [{ width: 64 }, { width: 30 }, { width: 26 }];
+    info.addRow(['BANK STATEMENT IMPORT — INSTRUCTIONS']).font = { bold: true, size: 14 };
+    info.addRow([]);
+    [
+      '1. Fill ONLY the "Bank Entries" sheet. Do not rename sheets or change the header row.',
+      '2. Date — format YYYY-MM-DD (e.g. 2026-06-11) or use an Excel date cell.',
+      '3. Debit — amount that went OUT of the bank. Credit — amount that came IN. Numbers only.',
+      '4. Fill exactly ONE of Debit / Credit per row — never both, never neither.',
+      '5. Description — narration for the entry (e.g. "NEFT rent June").',
+      '6. Ledger — the counter ledger. Copy-paste EXACTLY from the list on the right.',
+      '7. Money IN  → posted as Receipt:  Dr Bank / Cr Ledger.',
+      '   Money OUT → posted as Payment: Dr Ledger / Cr Bank.',
+      '8. If anything is invalid the whole file is rejected with row-wise errors — fix and re-upload.',
+    ].forEach((t) => info.addRow([t]));
+    info.addRow([]);
+    info.getCell('B1').value = 'AVAILABLE LEDGERS (copy-paste)';
+    info.getCell('B1').font = { bold: true };
+    info.getCell('C1').value = 'Group';
+    info.getCell('C1').font = { bold: true };
+    ledgers.forEach((l, i) => {
+      info.getCell(`B${i + 2}`).value = l.name;
+      info.getCell(`C${i + 2}`).value = l.group?.name || '';
+    });
+
+    const data = wb.addWorksheet('Bank Entries');
+    data.columns = [
+      { header: 'Date', key: 'date', width: 14 },
+      { header: 'Description', key: 'desc', width: 40 },
+      { header: 'Debit', key: 'debit', width: 14 },
+      { header: 'Credit', key: 'credit', width: 14 },
+      { header: 'Ledger', key: 'ledger', width: 30 },
+    ];
+    headStyle(data.getRow(1));
+    data.addRow({ date: new Date().toISOString().slice(0, 10), desc: 'EXAMPLE — NEFT received from customer (delete this row)', debit: '', credit: 25000, ledger: ledgers.find((l) => l.group?.name === 'Sundry Debtors')?.name || 'Sales' });
+
+    await sendXlsx(res, wb, 'Bank-Import-Template.xlsx');
+  } catch (e) { next(e); }
+});
+
+// ── Bank statement import — validated upload ──
+router.post('/bank-import', async (req, res, next) => {
+  try {
+    await ensureCoA();
+    const { bankLedgerId, dataBase64 } = req.body || {};
+    const bank = await prisma.accLedger.findUnique({ where: { id: Number(bankLedgerId) || 0 } });
+    if (!bank) return res.status(400).json({ error: 'Pick the bank ledger to post against.' });
+    if (!dataBase64) return res.status(400).json({ error: 'No file received.' });
+
+    const wb = new ExcelJS.Workbook();
+    try { await wb.xlsx.load(Buffer.from(dataBase64, 'base64')); }
+    catch { return res.status(400).json({ error: 'Not a valid .xlsx file — download the template and try again.' }); }
+
+    const sheet = wb.getWorksheet('Bank Entries') || wb.worksheets[1] || wb.worksheets[0];
+    if (!sheet) return res.status(400).json({ error: 'Sheet "Bank Entries" not found — use the provided template.' });
+    const head = (i) => String(sheet.getRow(1).getCell(i).value || '').trim().toLowerCase();
+    if (head(1) !== 'date' || head(3) !== 'debit' || head(4) !== 'credit' || head(5) !== 'ledger') {
+      return res.status(400).json({ error: 'Header row changed — expected Date | Description | Debit | Credit | Ledger. Re-download the template.' });
+    }
+
+    const ledgers = await prisma.accLedger.findMany();
+    const byName = new Map(ledgers.map((l) => [l.name.trim().toLowerCase(), l]));
+    const errors = [];
+    const rows = [];
+
+    sheet.eachRow((row, rowNo) => {
+      if (rowNo === 1) return;
+      const raw = (i) => { const v = row.getCell(i).value; return v && typeof v === 'object' && 'result' in v ? v.result : v; };
+      const vals = [raw(1), raw(2), raw(3), raw(4), raw(5)];
+      if (vals.every((v) => v === null || v === undefined || String(v).trim() === '')) return; // skip blank rows
+      const desc = String(vals[1] ?? '').trim();
+      if (desc.toUpperCase().startsWith('EXAMPLE')) return; // skip sample row
+
+      // Date
+      let date = '';
+      const dv = vals[0];
+      if (dv instanceof Date) date = dv.toISOString().slice(0, 10);
+      else if (isValidDate(String(dv || '').trim())) date = String(dv).trim();
+      else errors.push({ row: rowNo, category: 'Invalid date', issue: `"${dv ?? ''}" — use YYYY-MM-DD (e.g. 2026-06-11)` });
+
+      // Amounts
+      const numOf = (v, label) => {
+        if (v === null || v === undefined || String(v).trim() === '') return 0;
+        const n = Number(v);
+        if (!Number.isFinite(n) || n < 0) { errors.push({ row: rowNo, category: 'Amount not a number', issue: `${label} contains "${v}" — numbers only` }); return NaN; }
+        return n;
+      };
+      const debit = numOf(vals[2], 'Debit');
+      const credit = numOf(vals[3], 'Credit');
+      if (Number.isFinite(debit) && Number.isFinite(credit)) {
+        if (debit > 0 && credit > 0) errors.push({ row: rowNo, category: 'Both amounts filled', issue: 'Fill only ONE of Debit / Credit per row' });
+        if (debit === 0 && credit === 0) errors.push({ row: rowNo, category: 'No amount', issue: 'Either Debit or Credit must have a value' });
+      }
+
+      // Ledger
+      const lname = String(vals[4] ?? '').trim();
+      let ledger = null;
+      if (!lname) errors.push({ row: rowNo, category: 'Missing ledger', issue: 'Ledger column is empty — copy a name from the "How to Fill" sheet' });
+      else {
+        ledger = byName.get(lname.toLowerCase());
+        if (!ledger) errors.push({ row: rowNo, category: 'Ledger not found', issue: `"${lname}" does not exist — copy exactly from the ledger list` });
+        else if (ledger.id === bank.id) errors.push({ row: rowNo, category: 'Invalid ledger', issue: 'Counter ledger cannot be the bank ledger itself' });
+      }
+
+      rows.push({ rowNo, date, desc, debit: debit || 0, credit: credit || 0, ledger });
+    });
+
+    if (rows.length === 0 && errors.length === 0) return res.status(400).json({ error: 'No data rows found in "Bank Entries".' });
+    if (errors.length) return res.status(400).json({ error: `File rejected — ${errors.length} issue(s) found. Fix and re-upload.`, errors });
+
+    let posted = 0;
+    for (const r of rows) {
+      const isIn = r.credit > 0; // money into bank
+      const amount = isIn ? r.credit : r.debit;
+      const vtype = isIn ? 'receipt' : 'payment';
+      await prisma.$transaction(async (tx) => tx.accVoucher.create({
+        data: {
+          voucherNo: await nextVoucherNo(tx, vtype),
+          vtype, date: r.date,
+          narration: r.desc || `Bank import (${bank.name})`,
+          refNo: 'BANK-IMPORT',
+          createdBy: req.user.username,
+          lines: {
+            create: isIn
+              ? [{ ledgerId: bank.id, debit: amount, credit: 0, sortOrder: 0 }, { ledgerId: r.ledger.id, debit: 0, credit: amount, sortOrder: 1 }]
+              : [{ ledgerId: r.ledger.id, debit: amount, credit: 0, sortOrder: 0 }, { ledgerId: bank.id, debit: 0, credit: amount, sortOrder: 1 }],
+          },
+        },
+      }));
+      posted++;
+    }
+    res.json({ ok: true, posted });
+  } catch (e) { next(e); }
+});
+
+// ── Ledger statement downloads (Excel + PDF) ──
+async function statementData(id) {
+  const ledger = await prisma.accLedger.findUnique({ where: { id }, include: { group: true } });
+  if (!ledger) return null;
+  const lines = await prisma.accVoucherLine.findMany({
+    where: { ledgerId: id },
+    include: { voucher: { select: { voucherNo: true, vtype: true, date: true, narration: true } } },
+    orderBy: [{ voucher: { date: 'asc' } }, { id: 'asc' }],
+  });
+  return { ledger, lines };
+}
+
+router.get('/ledgers/:id/statement.xlsx', async (req, res, next) => {
+  try {
+    const d = await statementData(Number(req.params.id));
+    if (!d) return res.status(404).json({ error: 'Ledger not found' });
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Statement');
+    ws.columns = [
+      { header: 'Date', key: 'date', width: 12 }, { header: 'Voucher', key: 'no', width: 14 },
+      { header: 'Type', key: 'type', width: 12 }, { header: 'Narration', key: 'narr', width: 44 },
+      { header: 'Debit', key: 'dr', width: 14 }, { header: 'Credit', key: 'cr', width: 14 }, { header: 'Balance', key: 'bal', width: 18 },
+    ];
+    headStyle(ws.getRow(1));
+    let run = (d.ledger.openingType === 'cr' ? -1 : 1) * (d.ledger.openingBalance || 0);
+    ws.addRow({ narr: 'Opening balance', bal: `${Math.abs(run)} ${run >= 0 ? 'Dr' : 'Cr'}` });
+    for (const l of d.lines) {
+      run += (l.debit || 0) - (l.credit || 0);
+      ws.addRow({ date: l.voucher.date, no: l.voucher.voucherNo, type: l.voucher.vtype, narr: l.voucher.narration, dr: l.debit || '', cr: l.credit || '', bal: `${r2(Math.abs(run))} ${run >= 0 ? 'Dr' : 'Cr'}` });
+    }
+    await sendXlsx(res, wb, `Ledger-${d.ledger.name.replace(/[^\w-]+/g, '-')}.xlsx`);
+  } catch (e) { next(e); }
+});
+
+router.get('/ledgers/:id/statement.pdf', async (req, res, next) => {
+  try {
+    const d = await statementData(Number(req.params.id));
+    if (!d) return res.status(404).json({ error: 'Ledger not found' });
+    let run = (d.ledger.openingType === 'cr' ? -1 : 1) * (d.ledger.openingBalance || 0);
+    const body = [
+      ['Date', 'Voucher', 'Narration', 'Debit', 'Credit', 'Balance'].map((t) => ({ text: t, bold: true, color: '#fff', fillColor: '#E8732B' })),
+      ['', '', { text: 'Opening balance', italics: true }, '', '', `${Math.abs(run)} ${run >= 0 ? 'Dr' : 'Cr'}`],
+      ...d.lines.map((l) => {
+        run += (l.debit || 0) - (l.credit || 0);
+        return [l.voucher.date, l.voucher.voucherNo, l.voucher.narration || '', l.debit ? String(r2(l.debit)) : '', l.credit ? String(r2(l.credit)) : '', `${r2(Math.abs(run))} ${run >= 0 ? 'Dr' : 'Cr'}`];
+      }),
+    ];
+    sendPdf(res, {
+      pageSize: 'A4', pageMargins: [30, 34, 30, 34],
+      defaultStyle: { font: 'Helvetica', fontSize: 8.5 },
+      content: [
+        { text: `Ledger Statement — ${d.ledger.name}`, bold: true, fontSize: 14 },
+        { text: `Group: ${d.ledger.group?.name} · Generated ${new Date().toLocaleString('en-IN')}`, color: '#666', fontSize: 8, margin: [0, 2, 0, 8] },
+        { table: { headerRows: 1, widths: [50, 55, '*', 55, 55, 70], body }, layout: { hLineColor: () => '#ddd', vLineColor: () => '#ddd', hLineWidth: () => 0.5, vLineWidth: () => 0.5 } },
+      ],
+    }, `Ledger-${d.ledger.name.replace(/[^\w-]+/g, '-')}.pdf`);
+  } catch (e) { next(e); }
+});
+
+// ── Financials pack (TB + P&L + BS + Cash Flow + monthly tax summary) ──
+router.get('/reports/financials.xlsx', async (req, res, next) => {
+  try {
+    const { from, to } = { from: req.query.from, to: req.query.to };
+    const all = await ledgerBalances(from, to);
+    const wb = new ExcelJS.Workbook();
+
+    const tb = wb.addWorksheet('Trial Balance');
+    tb.columns = [{ header: 'Ledger', width: 30 }, { header: 'Group', width: 24 }, { header: 'Debit', width: 14 }, { header: 'Credit', width: 14 }];
+    headStyle(tb.getRow(1));
+    let tdr = 0, tcr = 0;
+    for (const l of all.filter((x) => x.net !== 0)) {
+      const dr = l.net > 0 ? l.net : 0, cr = l.net < 0 ? -l.net : 0;
+      tdr += dr; tcr += cr;
+      tb.addRow([l.name, l.group, dr || '', cr || '']);
+    }
+    tb.addRow(['TOTAL', '', r2(tdr), r2(tcr)]).font = { bold: true };
+
+    const income = all.filter((l) => l.nature === 'income' && l.net !== 0);
+    const expense = all.filter((l) => l.nature === 'expense' && l.net !== 0);
+    const ti = r2(income.reduce((s, l) => s + -l.net, 0));
+    const te = r2(expense.reduce((s, l) => s + l.net, 0));
+    const pl = wb.addWorksheet('Profit & Loss');
+    pl.columns = [{ width: 34 }, { width: 16 }];
+    headStyle(pl.addRow(['Particulars', 'Amount']));
+    pl.addRow(['INCOME', '']).font = { bold: true };
+    income.forEach((l) => pl.addRow([l.name, r2(-l.net)]));
+    pl.addRow(['Total Income', ti]).font = { bold: true };
+    pl.addRow(['EXPENSES', '']).font = { bold: true };
+    expense.forEach((l) => pl.addRow([l.name, r2(l.net)]));
+    pl.addRow(['Total Expenses', te]).font = { bold: true };
+    pl.addRow([ti - te >= 0 ? 'NET PROFIT' : 'NET LOSS', r2(Math.abs(ti - te))]).font = { bold: true };
+
+    const bs = wb.addWorksheet('Balance Sheet');
+    bs.columns = [{ width: 34 }, { width: 16 }];
+    headStyle(bs.addRow(['Particulars', 'Amount']));
+    bs.addRow(['LIABILITIES & CAPITAL', '']).font = { bold: true };
+    all.filter((l) => l.nature === 'liability' && l.net !== 0).forEach((l) => bs.addRow([l.name, r2(-l.net)]));
+    bs.addRow(['Net Profit / (Loss)', r2(ti - te)]);
+    bs.addRow(['ASSETS', '']).font = { bold: true };
+    all.filter((l) => l.nature === 'asset' && l.net !== 0).forEach((l) => bs.addRow([l.name, r2(l.net)]));
+
+    // Monthly summary for tax/GST filing: sales, purchases, expenses per month
+    const lines = await prisma.accVoucherLine.findMany({ include: { voucher: { select: { date: true } }, ledger: { include: { group: true } } } });
+    const months = new Map();
+    for (const l of lines) {
+      const m = (l.voucher.date || '').slice(0, 7);
+      if (!m) continue;
+      const cur = months.get(m) || { sales: 0, purchases: 0, expenses: 0, gstOut: 0, gstIn: 0 };
+      const g = l.ledger.group;
+      if (g.nature === 'income') cur.sales = r2(cur.sales + l.credit - l.debit);
+      if (g.name === 'Purchase Accounts') cur.purchases = r2(cur.purchases + l.debit - l.credit);
+      if (g.nature === 'expense' && g.name !== 'Purchase Accounts') cur.expenses = r2(cur.expenses + l.debit - l.credit);
+      if (l.ledger.name.includes('Output')) cur.gstOut = r2(cur.gstOut + l.credit - l.debit);
+      if (l.ledger.name.includes('Input')) cur.gstIn = r2(cur.gstIn + l.debit - l.credit);
+      months.set(m, cur);
+    }
+    const ms = wb.addWorksheet('Monthly Summary');
+    ms.columns = [{ header: 'Month', width: 12 }, { header: 'Sales', width: 14 }, { header: 'Purchases', width: 14 }, { header: 'Other Expenses', width: 16 }, { header: 'GST Output', width: 14 }, { header: 'GST Input', width: 14 }, { header: 'Net (Sales-Pur-Exp)', width: 18 }];
+    headStyle(ms.getRow(1));
+    [...months.entries()].sort((a, b) => a[0].localeCompare(b[0])).forEach(([m, v]) => ms.addRow([m, v.sales, v.purchases, v.expenses, v.gstOut, v.gstIn, r2(v.sales - v.purchases - v.expenses)]));
+
+    await sendXlsx(res, wb, `Financials${from ? `-${from}` : ''}${to ? `-to-${to}` : ''}.xlsx`);
+  } catch (e) { next(e); }
 });
 
 export default router;

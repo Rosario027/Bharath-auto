@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { api, exporter } from '../api.js';
+import { useState } from 'react';
+import { exporter } from '../api.js';
 
 const d10 = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
@@ -19,20 +19,10 @@ export default function Reports() {
   const [{ from, to }, setRange] = useState(presetRange('month'));
   const [month, setMonth] = useState(d10(new Date()).slice(0, 7));
   const [busy, setBusy] = useState('');
-  const [series, setSeries] = useState([]);
   const [toast, setToast] = useState(null);
   const flash = (msg, kind = 'ok') => { setToast({ msg, kind }); setTimeout(() => setToast(null), 3000); };
 
   const pick = (p) => { setPreset(p); if (p !== 'custom') setRange(presetRange(p)); };
-
-  const loadSeries = () => api.listSeries().then(setSeries).catch(() => {});
-  useEffect(() => { loadSeries(); }, []);
-  const noteSeries = series.filter((s) => s.docType === 'credit-note' || s.docType === 'debit-note');
-  const patchSeries = (id, patch) => setSeries((p) => p.map((s) => (s.id === id ? { ...s, ...patch } : s)));
-  const saveSeries = async (s) => {
-    try { await api.updateSeries(s.id, { name: s.name, prefix: s.prefix, nextSeq: s.nextSeq }); await loadSeries(); flash('Series saved'); }
-    catch (e) { flash(e.message, 'err'); }
-  };
 
   const dl = async (kind) => {
     setBusy(kind);
@@ -87,18 +77,6 @@ export default function Reports() {
         <p className="subtle" style={{ fontSize: 13, marginTop: 8 }}>Present / absent / clocked days per employee + the full daily log with work summaries.</p>
       </section>
 
-      <section className="fsec">
-        <h3>Credit & Debit Note Series <span className="hint">editable here & in Invoice Settings</span></h3>
-        {noteSeries.map((s) => (
-          <div className="series-row" key={s.id}>
-            <label>Name<input value={s.name} onChange={(e) => patchSeries(s.id, { name: e.target.value })} /></label>
-            <label>Prefix<input value={s.prefix} onChange={(e) => patchSeries(s.id, { prefix: e.target.value })} /></label>
-            <label>Next #<input type="number" value={s.nextSeq} onChange={(e) => patchSeries(s.id, { nextSeq: Number(e.target.value) })} /></label>
-            <span className="badge" style={{ alignSelf: 'center' }}>{s.docType}</span>
-            <button className="btn xs primary" onClick={() => saveSeries(s)}>Save</button>
-          </div>
-        ))}
-      </section>
     </div>
   );
 }

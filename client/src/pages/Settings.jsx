@@ -158,7 +158,10 @@ export default function Settings() {
               <label>Name<input value={s.name} onChange={(e) => patchSeries(s.id, { name: e.target.value })} /></label>
               <label>Prefix<input value={s.prefix} onChange={(e) => patchSeries(s.id, { prefix: e.target.value })} /></label>
               <label>Next #<input type="number" value={s.nextSeq} onChange={(e) => patchSeries(s.id, { nextSeq: Number(e.target.value) })} /></label>
-              <button className={`btn xs ${s.isDefault ? 'primary' : ''}`} onClick={() => makeDefault(s.id)} title="Set as default series">{s.isDefault ? '★ Default' : 'Make default'}</button>
+              <span className={`badge vt-${s.docType === 'credit-note' ? 'credit-note' : s.docType === 'debit-note' ? 'debit-note' : 'sales'}`} style={{ alignSelf: 'center' }}>
+                {s.docType === 'credit-note' ? 'Credit Note' : s.docType === 'debit-note' ? 'Debit Note' : 'Invoice'}
+              </span>
+              <button className={`btn xs ${s.isDefault ? 'primary' : ''}`} onClick={() => makeDefault(s.id)} title="Set as default series for this document type">{s.isDefault ? '★ Default' : 'Make default'}</button>
               <button className="btn xs danger" disabled={series.length <= 1} onClick={() => removeSeries(s.id)}>✕</button>
             </div>
           ))}

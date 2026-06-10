@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api.js';
+import { api, exporter } from '../api.js';
 import { formatINR } from '../utils/money.js';
 
 const INR = (n) => `₹ ${formatINR(n)}`;
@@ -53,7 +53,9 @@ export default function AccReports() {
         <span style={{ flex: 1 }} />
         <label style={{ width: 150 }}>From<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
         <label style={{ width: 150 }}>To<input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+        <button className="btn primary" onClick={() => exporter.financialsXlsx(qp()).catch((e) => flash(e.message, 'err'))}>⬇ Download Excel pack</button>
       </div>
+      <p className="subtle" style={{ fontSize: 12, marginTop: -6 }}>Excel pack = Trial Balance + P&L + Balance Sheet + monthly Sales/Purchases/GST summary (for tax-return filing). Click any P&L / Balance Sheet line to see the underlying ledger entries.</p>
 
       {tab === 'tb' && tb && (
         <div className="card table-card">
@@ -61,7 +63,7 @@ export default function AccReports() {
             <thead><tr><th>Ledger</th><th>Group</th><th className="r">Debit Balance</th><th className="r">Credit Balance</th></tr></thead>
             <tbody>
               {tb.rows.map((r) => (
-                <tr key={r.id}>
+                <tr key={r.id} className="row-click" onClick={() => nav(`/accounting/ledgers?sid=${r.id}`)}>
                   <td className="strong">{r.name}</td><td className="subtle">{r.group}</td>
                   <td className="r">{r.drBalance ? INR(r.drBalance) : ''}</td>
                   <td className="r">{r.crBalance ? INR(r.crBalance) : ''}</td>
@@ -86,7 +88,7 @@ export default function AccReports() {
             <h3>Expenses (Dr)</h3>
             <table className="data-table">
               <tbody>
-                {pnl.expense.map((r) => <tr key={r.id}><td>{r.name}<div className="subtle" style={{ fontSize: 11 }}>{r.group}</div></td><td className="r">{INR(r.amount)}</td></tr>)}
+                {pnl.expense.map((r) => <tr key={r.id} className="row-click" onClick={() => nav(`/accounting/ledgers?sid=${r.id}`)}><td>{r.name}<div className="subtle" style={{ fontSize: 11 }}>{r.group}</div></td><td className="r">{INR(r.amount)}</td></tr>)}
                 {pnl.netProfit > 0 && <tr className="acc-total"><td><b>Net Profit c/d</b></td><td className="r"><b>{INR(pnl.netProfit)}</b></td></tr>}
                 <tr className="acc-total"><td><b>Total</b></td><td className="r"><b>{INR(pnl.totalExpense + Math.max(0, pnl.netProfit))}</b></td></tr>
               </tbody>
@@ -96,7 +98,7 @@ export default function AccReports() {
             <h3>Income (Cr)</h3>
             <table className="data-table">
               <tbody>
-                {pnl.income.map((r) => <tr key={r.id}><td>{r.name}<div className="subtle" style={{ fontSize: 11 }}>{r.group}</div></td><td className="r">{INR(r.amount)}</td></tr>)}
+                {pnl.income.map((r) => <tr key={r.id} className="row-click" onClick={() => nav(`/accounting/ledgers?sid=${r.id}`)}><td>{r.name}<div className="subtle" style={{ fontSize: 11 }}>{r.group}</div></td><td className="r">{INR(r.amount)}</td></tr>)}
                 {pnl.netProfit < 0 && <tr className="acc-total"><td><b>Net Loss c/d</b></td><td className="r"><b>{INR(-pnl.netProfit)}</b></td></tr>}
                 <tr className="acc-total"><td><b>Total</b></td><td className="r"><b>{INR(pnl.totalIncome + Math.max(0, -pnl.netProfit))}</b></td></tr>
               </tbody>
@@ -117,7 +119,7 @@ export default function AccReports() {
             <h3>Liabilities & Capital</h3>
             <table className="data-table">
               <tbody>
-                {bs.liabilities.map((r) => <tr key={r.id}><td>{r.name}<div className="subtle" style={{ fontSize: 11 }}>{r.group}</div></td><td className="r">{INR(r.amount)}</td></tr>)}
+                {bs.liabilities.map((r) => <tr key={r.id} className="row-click" onClick={() => nav(`/accounting/ledgers?sid=${r.id}`)}><td>{r.name}<div className="subtle" style={{ fontSize: 11 }}>{r.group}</div></td><td className="r">{INR(r.amount)}</td></tr>)}
                 <tr><td><b>{bs.netProfit >= 0 ? 'Net Profit (current period)' : 'Net Loss (current period)'}</b></td><td className="r">{INR(bs.netProfit)}</td></tr>
                 <tr className="acc-total"><td><b>Total</b></td><td className="r"><b>{INR(bs.totalLiabilities)}</b></td></tr>
               </tbody>
@@ -127,7 +129,7 @@ export default function AccReports() {
             <h3>Assets</h3>
             <table className="data-table">
               <tbody>
-                {bs.assets.map((r) => <tr key={r.id}><td>{r.name}<div className="subtle" style={{ fontSize: 11 }}>{r.group}</div></td><td className="r">{INR(r.amount)}</td></tr>)}
+                {bs.assets.map((r) => <tr key={r.id} className="row-click" onClick={() => nav(`/accounting/ledgers?sid=${r.id}`)}><td>{r.name}<div className="subtle" style={{ fontSize: 11 }}>{r.group}</div></td><td className="r">{INR(r.amount)}</td></tr>)}
                 <tr className="acc-total"><td><b>Total</b></td><td className="r"><b>{INR(bs.totalAssets)}</b></td></tr>
               </tbody>
             </table>

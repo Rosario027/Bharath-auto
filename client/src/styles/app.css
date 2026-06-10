@@ -163,6 +163,30 @@ body {
 .salary-box b { font-size: 15px; }
 .salary-box .sal-total b { font-size: 19px; color: var(--brand-green); }
 
+/* ── Accounting KPIs / general dashboard ── */
+.acc-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.acc-kpi { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; border: 1px solid var(--line); border-radius: 11px; padding: 12px 14px; background: #fcfcfd; cursor: pointer; text-align: left; transition: .15s; }
+.acc-kpi:hover { background: #fff; box-shadow: var(--shadow); transform: translateY(-1px); }
+.acc-kpi span { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.acc-kpi b { font-size: 17px; font-variant-numeric: tabular-nums; }
+.kpi-grid .kpi-big b { font-size: 21px; }
+.kpi-sub { font-size: 11px; color: var(--muted); font-style: normal; }
+.todo-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-left-width: 4px; border-radius: 10px; background: #fcfcfd; margin-bottom: 8px; }
+.todo-row.pr-bd-high { border-left-color: #c0392b; }
+.todo-row.pr-bd-medium { border-left-color: #e8a13b; }
+.todo-row.pr-bd-low { border-left-color: #5B9B36; }
+.import-errors { margin-top: 14px; border: 1px solid #f3c9c4; background: #fff7f6; border-radius: 10px; padding: 12px 14px; }
+
+/* topbar brand is now a button */
+.topbar-brand { background: transparent; border: none; cursor: pointer; padding: 0; }
+.topbar-brand:hover .brand-name { text-decoration: underline; }
+
+/* white sidebar icons */
+.nav-icon { display: inline-flex; align-items: center; justify-content: center; color: #f2f5f9; }
+.nav-icon svg { display: block; }
+.nav-item .nav-label { color: #dde3ea; }
+.nav-item.active .nav-icon, .nav-item.active .nav-label { color: #fff; }
+
 /* ── Accounting ── */
 .badge.vt-sales { background: #e7f6ec; color: #1f8f4e; }
 .badge.vt-purchase { background: #fff4e5; color: #b9651a; }
@@ -450,7 +474,7 @@ input[readonly] { background: #f6f8fa; color: var(--muted); cursor: not-allowed;
 .el-sum { color: var(--ink); }
 
 /* Invoice series manager (settings) */
-.series-row { display: grid; grid-template-columns: 1.4fr 1.4fr 0.8fr auto auto; gap: 8px; align-items: end; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.series-row { display: grid; grid-template-columns: 1.3fr 1.2fr 0.7fr auto auto auto; gap: 8px; align-items: end; padding: 8px 0; border-bottom: 1px dashed var(--line); }
 .series-row label { font-size: 11px; }
 .series-row .default-pill { font-size: 11px; font-weight: 700; }
 

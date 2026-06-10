@@ -19,6 +19,7 @@ import SiteVisitNew from './pages/SiteVisitNew.jsx';
 import SiteVisitDetail from './pages/SiteVisitDetail.jsx';
 import Inventory from './pages/Inventory.jsx';
 import Reports from './pages/Reports.jsx';
+import Overview from './pages/Overview.jsx';
 import Accounting from './pages/Accounting.jsx';
 import AccVoucherEntry from './pages/AccVoucherEntry.jsx';
 import AccLedgers from './pages/AccLedgers.jsx';
@@ -78,22 +79,37 @@ const IconPhone = () => (
   <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5" /><path d="M11 18h2" /></svg>
 );
 
+// ── Sidebar icons — crisp white strokes (emojis were too dim on the dark bar) ──
+const NI = ({ children }) => (
+  <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">{children}</svg>
+);
+const IcHome = () => <NI><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /><path d="M10 21v-6h4v6" /></NI>;
+const IcInvoice = () => <NI><path d="M7 2h10a1 1 0 0 1 1 1v19l-3-2-3 2-3-2-3 2V3a1 1 0 0 1 1-1z" /><path d="M9 7h6M9 11h6M9 15h4" /></NI>;
+const IcBook = () => <NI><path d="M4 4a2 2 0 0 1 2-2h14v18H6a2 2 0 0 0-2 2V4z" /><path d="M20 16H6a2 2 0 0 0-2 2" /><path d="M9 6h7M9 9.5h7" /></NI>;
+const IcUsers = () => <NI><circle cx="9" cy="8" r="3.4" /><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5S14.9 16.4 15.5 20" /><circle cx="17.5" cy="9.5" r="2.6" /><path d="M16 14.7c2.9.2 4.9 1.9 5.5 4.8" /></NI>;
+const IcStaff = () => <NI><circle cx="12" cy="7" r="3.5" /><path d="M5 21c.7-4.2 3.6-6.5 7-6.5s6.3 2.3 7 6.5" /><path d="M9 14.8 12 18l3-3.2" /></NI>;
+const IcPin = () => <NI><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" /><circle cx="12" cy="10" r="2.6" /></NI>;
+const IcBox = () => <NI><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5v-9z" /><path d="M3 7.5 12 12l9-4.5M12 12v9" /></NI>;
+const IcChart = () => <NI><path d="M4 20V4" /><path d="M4 20h16" /><path d="M8 16v-5M12 16V8M16 16v-3M20 16V6" /></NI>;
+const IcUser = () => <NI><circle cx="12" cy="8" r="3.6" /><path d="M4.5 20.5c.8-4.3 3.9-6.5 7.5-6.5s6.7 2.2 7.5 6.5" /></NI>;
+const IcGear = () => <NI><circle cx="12" cy="12" r="3" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5 5l2.1 2.1M16.9 16.9 19 19M19 5l-2.1 2.1M7.1 16.9 5 19" /></NI>;
+
 const SettingsContext = createContext(null);
 export const useSettings = () => useContext(SettingsContext);
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
-function TopBar({ onHamburger, view, setView, isMobile, user, onLogout }) {
+function TopBar({ onHamburger, view, setView, isMobile, user, onLogout, onBrand }) {
   return (
     <header className="topbar">
       <button className="hamburger" onClick={onHamburger} aria-label="Toggle menu">☰</button>
-      <div className="topbar-brand">
+      <button className="topbar-brand" onClick={onBrand} title="Dashboard">
         <img src="/logo-mark.svg" alt="logo" />
         <div className="topbar-names">
           <span className="brand-name">BHARATH</span>
           <span className="brand-sub">AUTOMATION</span>
         </div>
-      </div>
+      </button>
       <div className="topbar-spacer" />
       <div className="view-toggle" role="group" aria-label="Layout">
         <button className={`vt ${!isMobile ? 'on' : ''}`} onClick={() => setView('web')} title="Desktop view" aria-label="Desktop view"><IconMonitor /></button>
@@ -126,15 +142,21 @@ function Sidebar({ onNavigate, isAdmin, isStaff }) {
   return (
     <aside className="sidebar open">
       <nav>
+        {isAdmin && (
+          <NavLink to="/overview" onClick={onNavigate} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
+            <span className="nav-icon"><IcHome /></span>
+            <span className="nav-label">Dashboard</span>
+          </NavLink>
+        )}
         {isStaff && (
           <NavLink to="/me" onClick={onNavigate} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-            <span className="nav-icon">🏠</span>
+            <span className="nav-icon"><IcHome /></span>
             <span className="nav-label">My Workspace</span>
           </NavLink>
         )}
         {isStaff && (
           <NavLink to="/my-visits" onClick={onNavigate} className={() => 'nav-item' + (loc.pathname.startsWith('/my-visits') || loc.pathname.startsWith('/site-visits') ? ' active' : '')}>
-            <span className="nav-icon">📍</span>
+            <span className="nav-icon"><IcPin /></span>
             <span className="nav-label">Site Visits</span>
           </NavLink>
         )}
@@ -144,7 +166,7 @@ function Sidebar({ onNavigate, isAdmin, isStaff }) {
             className={`nav-item group-head ${invoiceActive ? 'active' : ''}`}
             onClick={() => { setInvoiceOpen((v) => !v); nav(isStaff ? '/invoices' : '/'); }}
           >
-            <span className="nav-icon">🧾</span>
+            <span className="nav-icon"><IcInvoice /></span>
             <span className="nav-label">Invoice</span>
             <span className={`caret ${invoiceOpen ? 'down' : ''}`}>▾</span>
           </button>
@@ -159,13 +181,13 @@ function Sidebar({ onNavigate, isAdmin, isStaff }) {
 
         {isAdmin && (
           <NavLink to="/clients" onClick={onNavigate} className={() => 'nav-item' + (loc.pathname.startsWith('/clients') ? ' active' : '')}>
-            <span className="nav-icon">👥</span>
+            <span className="nav-icon"><IcUsers /></span>
             <span className="nav-label">Clients</span>
           </NavLink>
         )}
         {isAdmin && (
           <NavLink to="/site-visits" onClick={onNavigate} className={() => 'nav-item' + (loc.pathname.startsWith('/site-visits') ? ' active' : '')}>
-            <span className="nav-icon">📍</span>
+            <span className="nav-icon"><IcPin /></span>
             <span className="nav-label">Site Visits</span>
           </NavLink>
         )}
@@ -175,7 +197,7 @@ function Sidebar({ onNavigate, isAdmin, isStaff }) {
               className={`nav-item group-head ${staffActive ? 'active' : ''}`}
               onClick={() => { setStaffOpen((v) => !v); nav('/staff'); }}
             >
-              <span className="nav-icon">🧑‍💼</span>
+              <span className="nav-icon"><IcStaff /></span>
               <span className="nav-label">Staff</span>
               <span className={`caret ${staffOpen ? 'down' : ''}`}>▾</span>
             </button>
@@ -193,7 +215,7 @@ function Sidebar({ onNavigate, isAdmin, isStaff }) {
             className={`nav-item group-head ${loc.pathname.startsWith('/accounting') ? 'active' : ''}`}
             onClick={() => { setAccOpen((v) => !v); nav('/accounting'); }}
           >
-            <span className="nav-icon">📒</span>
+            <span className="nav-icon"><IcBook /></span>
             <span className="nav-label">Accounting</span>
             <span className={`caret ${accOpen ? 'down' : ''}`}>▾</span>
           </button>
@@ -209,22 +231,22 @@ function Sidebar({ onNavigate, isAdmin, isStaff }) {
         </div>
 
         <NavLink to="/inventory" onClick={onNavigate} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-          <span className="nav-icon">📦</span>
+          <span className="nav-icon"><IcBox /></span>
           <span className="nav-label">Inventory</span>
         </NavLink>
         <NavLink to="/reports" onClick={onNavigate} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-          <span className="nav-icon">📊</span>
+          <span className="nav-icon"><IcChart /></span>
           <span className="nav-label">Reports</span>
         </NavLink>
         <NavLink to="/account" onClick={onNavigate} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
-          <span className="nav-icon">👤</span>
+          <span className="nav-icon"><IcUser /></span>
           <span className="nav-label">My Account</span>
         </NavLink>
       </nav>
       <div className="sidebar-foot">
         {isAdmin && (
           <NavLink to="/app-settings" onClick={onNavigate} className={({ isActive }) => 'nav-item settings-item' + (isActive ? ' active' : '')}>
-            <span className="nav-icon">⚙️</span>
+            <span className="nav-icon"><IcGear /></span>
             <span className="nav-label">Settings</span>
           </NavLink>
         )}
@@ -235,6 +257,7 @@ function Sidebar({ onNavigate, isAdmin, isStaff }) {
 }
 
 export default function App() {
+  const navTo = useNavigate();
   const [user, setUser] = useState(() => getStoredUser());
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -320,7 +343,8 @@ export default function App() {
               </div>
             </div>
           )}
-          <TopBar onHamburger={() => setSidebarOpen((v) => !v)} view={view} setView={setView} isMobile={isMobile} user={user} onLogout={logout} />
+          <TopBar onHamburger={() => setSidebarOpen((v) => !v)} view={view} setView={setView} isMobile={isMobile} user={user} onLogout={logout}
+            onBrand={() => navTo(isAdmin ? '/overview' : isStaff ? '/me' : '/')} />
           <div className="app-body">
             {sidebarOpen && <Sidebar onNavigate={closeOnMobile} isAdmin={isAdmin} isStaff={isStaff} />}
             {isMobile && sidebarOpen && <div className="sb-backdrop" onClick={() => setSidebarOpen(false)} />}
@@ -346,6 +370,7 @@ export default function App() {
                 <Route path="/site-visits/:id" element={<SiteVisitDetail />} />
                 <Route path="/inventory" element={<Inventory />} />
                 <Route path="/reports" element={<Reports />} />
+                <Route path="/overview" element={<AdminOnly><Overview /></AdminOnly>} />
                 <Route path="/accounting" element={<Accounting />} />
                 <Route path="/accounting/voucher/new" element={<AccVoucherEntry key="new" />} />
                 <Route path="/accounting/voucher/:id" element={<AccVoucherEntry />} />

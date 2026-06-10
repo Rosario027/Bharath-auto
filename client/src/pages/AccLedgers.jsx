@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { api } from '../api.js';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { api, exporter } from '../api.js';
 import { formatINR } from '../utils/money.js';
 
 const blank = { name: '', groupId: '', openingBalance: '', openingType: 'dr', gstin: '', notes: '' };
@@ -8,6 +8,7 @@ const fmtD = (s) => { if (!s) return '—'; const [y, m, d] = s.split('-'); retu
 
 export default function AccLedgers() {
   const nav = useNavigate();
+  const [params] = useSearchParams();
   const [ledgers, setLedgers] = useState([]);
   const [groups, setGroups] = useState([]);
   const [q, setQ] = useState('');
@@ -26,6 +27,12 @@ export default function AccLedgers() {
     } catch (e) { flash(e.message, 'err'); }
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  // Drill-down from reports: /accounting/ledgers?sid=<ledgerId>
+  useEffect(() => {
+    const sid = Number(params.get('sid'));
+    if (sid) api.accLedgerStatement(sid).then(setStatement).catch(() => {});
+  }, [params]);
 
   const add = async (e) => {
     e.preventDefault();
@@ -79,7 +86,11 @@ export default function AccLedgers() {
         <section className="fsec" style={{ borderLeft: '4px solid var(--brand-orange)' }}>
           <div className="fsec-head">
             <h3>Statement · {statement.ledger.name} <span className="hint">{statement.ledger.group?.name}</span></h3>
-            <button className="btn xs" onClick={() => setStatement(null)}>Close</button>
+            <div className="fsec-tools">
+              <button className="btn xs" onClick={() => exporter.ledgerStatementPdf(statement.ledger.id, `Ledger-${statement.ledger.name}.pdf`).catch((e) => flash(e.message, 'err'))}>⬇ PDF</button>
+              <button className="btn xs" onClick={() => exporter.ledgerStatementXlsx(statement.ledger.id, `Ledger-${statement.ledger.name}.xlsx`).catch((e) => flash(e.message, 'err'))}>⬇ Excel</button>
+              <button className="btn xs" onClick={() => setStatement(null)}>Close</button>
+            </div>
           </div>
           <table className="data-table">
             <thead><tr><th>Date</th><th>Voucher</th><th>Narration</th><th className="r">Debit</th><th className="r">Credit</th><th className="r">Balance</th></tr></thead>
