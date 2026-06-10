@@ -20,6 +20,7 @@ import staffAdminRouter from './routes/staffAdmin.js';
 import siteVisitsRouter from './routes/siteVisits.js';
 import inventoryRouter from './routes/inventory.js';
 import reportsRouter from './routes/reports.js';
+import accountingRouter from './routes/accounting.js';
 import { authRequired, adminRequired } from './lib/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -40,6 +41,7 @@ app.use('/api/staff-admin', staffAdminRouter);             // admin-only (guarde
 app.use('/api/site-visits', siteVisitsRouter);             // staff: own visits; admin: all
 app.use('/api/inventory', inventoryRouter);                // admin + accountant/staff
 app.use('/api/reports', reportsRouter);                    // admin + accountant/staff (Excel)
+app.use('/api/accounting', accountingRouter);              // books: admin + accountant
 app.use('/api/settings', authRequired, settingsRouter);   // GET both; PUT admin-only (guarded in router)
 app.use('/api/invoices', authRequired, invoicesRouter);   // both roles can raise invoices
 app.use('/api/customers', adminRequired, customersRouter); // client data — admin only

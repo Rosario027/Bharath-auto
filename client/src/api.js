@@ -124,6 +124,28 @@ export const api = {
   addSiteVisitUpdate: (id, data) => req(`/site-visits/${id}/updates`, { method: 'POST', body: JSON.stringify(data) }),
   deleteSiteVisit: (id) => req(`/site-visits/${id}`, { method: 'DELETE' }),
 
+  // accounting (admin + accountant)
+  accGroups: () => req('/accounting/groups'),
+  accLedgers: () => req('/accounting/ledgers'),
+  accCreateLedger: (data) => req('/accounting/ledgers', { method: 'POST', body: JSON.stringify(data) }),
+  accUpdateLedger: (id, data) => req(`/accounting/ledgers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  accDeleteLedger: (id) => req(`/accounting/ledgers/${id}`, { method: 'DELETE' }),
+  accLedgerStatement: (id) => req(`/accounting/ledgers/${id}/statement`),
+  accVouchers: (params = '') => req(`/accounting/vouchers${params}`),
+  accVoucher: (id) => req(`/accounting/vouchers/${id}`),
+  accCreateVoucher: (data) => req('/accounting/vouchers', { method: 'POST', body: JSON.stringify(data) }),
+  accUpdateVoucher: (id, data) => req(`/accounting/vouchers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  accDeleteVoucher: (id) => req(`/accounting/vouchers/${id}`, { method: 'DELETE' }),
+  accSyncInvoices: () => req('/accounting/sync-invoices', { method: 'POST' }),
+  accTrialBalance: (params = '') => req(`/accounting/reports/trial-balance${params}`),
+  accPnl: (params = '') => req(`/accounting/reports/pnl${params}`),
+  accBalanceSheet: (params = '') => req(`/accounting/reports/balance-sheet${params}`),
+  accCashFlow: () => req('/accounting/reports/cash-flow'),
+  accAssets: () => req('/accounting/assets'),
+  accCreateAsset: (data) => req('/accounting/assets', { method: 'POST', body: JSON.stringify(data) }),
+  accUpdateAsset: (id, data) => req(`/accounting/assets/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  accDeleteAsset: (id) => req(`/accounting/assets/${id}`, { method: 'DELETE' }),
+
   // staff admin (approvals, tasks, attendance visibility)
   staffSummary: () => req('/staff-admin/summary'),
   adminAttendance: (params = '') => req(`/staff-admin/attendance${params}`),

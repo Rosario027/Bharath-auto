@@ -258,6 +258,89 @@ model StaffTask {
   updatedAt    DateTime  @updatedAt
 }
 
+// ──────────────────────────────────────────────────────────────
+// ACCOUNTING MODULE — Indian double-entry books (Tally-style).
+// Groups → Ledgers → Vouchers (balanced Dr/Cr lines). Every voucher
+// edit is journaled (MCA Companies (Accounts) Rules, Rule 11(g)
+// audit-trail requirement). Invoices/CN/DN auto-post here.
+// ──────────────────────────────────────────────────────────────
+model AccGroup {
+  id       Int    @id @default(autoincrement())
+  name     String @unique
+  nature   String // asset | liability | income | expense
+  parent   String @default("") // e.g. "Current Assets"
+  isSystem Boolean @default(true)
+  ledgers  AccLedger[]
+}
+
+model AccLedger {
+  id             Int      @id @default(autoincrement())
+  name           String   @unique
+  groupId        Int
+  group          AccGroup @relation(fields: [groupId], references: [id])
+  openingBalance Float    @default(0) // amount (₹)
+  openingType    String   @default("dr") // dr | cr
+  gstin          String   @default("")
+  notes          String   @default("")
+  isSystem       Boolean  @default(false) // seeded core ledgers can't be deleted
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  lines          AccVoucherLine[]
+}
+
+model AccVoucher {
+  id              Int      @id @default(autoincrement())
+  voucherNo       String   // per-type sequence, e.g. JV-0001
+  vtype           String   // sales | purchase | payment | receipt | contra | journal | credit-note | debit-note
+  date            String   // yyyy-mm-dd
+  narration       String   @default("")
+  refNo           String   @default("") // bill / invoice reference
+  sourceInvoiceId Int?     @unique // auto-posted from the invoicing module
+  createdBy       String   @default("")
+  editCount       Int      @default(0)
+  lines           AccVoucherLine[]
+  edits           AccVoucherEdit[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model AccVoucherLine {
+  id        Int        @id @default(autoincrement())
+  voucherId Int
+  voucher   AccVoucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  ledgerId  Int
+  ledger    AccLedger  @relation(fields: [ledgerId], references: [id])
+  debit     Float      @default(0)
+  credit    Float      @default(0)
+  sortOrder Int        @default(0)
+}
+
+// MCA audit trail — append-only change log per voucher.
+model AccVoucherEdit {
+  id         Int        @id @default(autoincrement())
+  voucherId  Int
+  voucher    AccVoucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  byUsername String     @default("")
+  summary    String
+  changedAt  DateTime   @default(now())
+}
+
+// Fixed asset register → depreciation schedule (WDV / SLM).
+model FixedAsset {
+  id             Int      @id @default(autoincrement())
+  name           String
+  category       String   @default("Plant & Machinery")
+  purchaseDate   String   @default("") // yyyy-mm-dd
+  cost           Float    @default(0)  // gross block
+  additions      Float    @default(0)  // additions during the year
+  accumulatedDep Float    @default(0)  // opening accumulated depreciation
+  depRate        Float    @default(15) // % per annum
+  method         String   @default("WDV") // WDV | SLM
+  notes          String   @default("")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
 // Rotating login-screen quotes (Thirukkural). One is shown per day,
 // deterministically, so every user sees the same quote that day.
 model LoginQuote {

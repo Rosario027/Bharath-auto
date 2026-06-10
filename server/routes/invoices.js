@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../lib/db.js';
 import { computeTotals } from '../lib/calc.js';
 import { getSettings } from './settings.js';
+import { postInvoiceToBooks } from '../lib/accounting.js';
 
 const router = Router();
 
@@ -227,6 +228,9 @@ router.post('/', async (req, res, next) => {
       await applyStock(tx, inv, items, req.user?.username || '');
       return inv;
     });
+
+    // Auto-post the document into the accounting books (best-effort).
+    postInvoiceToBooks(created).catch((err) => console.error('[accounting] auto-post failed:', err.message));
 
     res.status(201).json(created);
   } catch (e) {

@@ -19,6 +19,11 @@ import SiteVisitNew from './pages/SiteVisitNew.jsx';
 import SiteVisitDetail from './pages/SiteVisitDetail.jsx';
 import Inventory from './pages/Inventory.jsx';
 import Reports from './pages/Reports.jsx';
+import Accounting from './pages/Accounting.jsx';
+import AccVoucherEntry from './pages/AccVoucherEntry.jsx';
+import AccLedgers from './pages/AccLedgers.jsx';
+import AccReports from './pages/AccReports.jsx';
+import AccAssets from './pages/AccAssets.jsx';
 
 // ── 60-min inactivity logout with a 30-second "continue?" warning ──
 const IDLE_LIMIT_MS = 60 * 60 * 1000;
@@ -116,6 +121,7 @@ function Sidebar({ onNavigate, isAdmin, isStaff }) {
 
   const staffActive = loc.pathname.startsWith('/staff');
   const [staffOpen, setStaffOpen] = useState(false);
+  const [accOpen, setAccOpen] = useState(false);
 
   return (
     <aside className="sidebar open">
@@ -182,6 +188,26 @@ function Sidebar({ onNavigate, isAdmin, isStaff }) {
             )}
           </div>
         )}
+        <div className="nav-group">
+          <button
+            className={`nav-item group-head ${loc.pathname.startsWith('/accounting') ? 'active' : ''}`}
+            onClick={() => { setAccOpen((v) => !v); nav('/accounting'); }}
+          >
+            <span className="nav-icon">📒</span>
+            <span className="nav-label">Accounting</span>
+            <span className={`caret ${accOpen ? 'down' : ''}`}>▾</span>
+          </button>
+          {accOpen && (
+            <div className="nav-sub">
+              {sub('/accounting', 'Day Book', true)}
+              {sub('/accounting/voucher/new', 'Voucher Entry')}
+              {sub('/accounting/ledgers', 'Ledgers')}
+              {sub('/accounting/reports', 'Statements')}
+              {sub('/accounting/assets', 'Fixed Assets')}
+            </div>
+          )}
+        </div>
+
         <NavLink to="/inventory" onClick={onNavigate} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
           <span className="nav-icon">📦</span>
           <span className="nav-label">Inventory</span>
@@ -320,6 +346,12 @@ export default function App() {
                 <Route path="/site-visits/:id" element={<SiteVisitDetail />} />
                 <Route path="/inventory" element={<Inventory />} />
                 <Route path="/reports" element={<Reports />} />
+                <Route path="/accounting" element={<Accounting />} />
+                <Route path="/accounting/voucher/new" element={<AccVoucherEntry key="new" />} />
+                <Route path="/accounting/voucher/:id" element={<AccVoucherEntry />} />
+                <Route path="/accounting/ledgers" element={<AccLedgers />} />
+                <Route path="/accounting/reports" element={<AccReports />} />
+                <Route path="/accounting/assets" element={<AccAssets />} />
                 <Route path="/app-settings" element={<AdminOnly><AppSettings /></AdminOnly>} />
                 <Route path="/account" element={<AccountSettings />} />
                 <Route path="*" element={<Navigate to="/" replace />} />

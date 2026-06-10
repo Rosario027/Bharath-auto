@@ -163,6 +163,35 @@ body {
 .salary-box b { font-size: 15px; }
 .salary-box .sal-total b { font-size: 19px; color: var(--brand-green); }
 
+/* ── Accounting ── */
+.badge.vt-sales { background: #e7f6ec; color: #1f8f4e; }
+.badge.vt-purchase { background: #fff4e5; color: #b9651a; }
+.badge.vt-payment { background: #fdecea; color: #c0392b; }
+.badge.vt-receipt { background: #e8f3fd; color: #2a6fb0; }
+.badge.vt-contra { background: #f1f3f5; color: #5a6470; }
+.badge.vt-journal { background: #eef2ff; color: #4f5bd5; }
+.badge.vt-credit-note { background: #fdf2e9; color: #b9651a; }
+.badge.vt-debit-note { background: #f3e8fd; color: #7d3cb5; }
+
+.vline-head { display: grid; grid-template-columns: 96px 1fr 150px 36px; gap: 10px; font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; padding: 0 2px; margin-bottom: 6px; }
+.vline { display: grid; grid-template-columns: 96px 1fr 150px 36px; gap: 10px; align-items: center; margin-bottom: 8px; }
+.vline input.r { text-align: right; font-variant-numeric: tabular-nums; }
+.drcr-toggle { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.drcr-toggle button { flex: 1; border: none; background: #fff; padding: 9px 4px; font-weight: 800; font-size: 12px; color: var(--muted); cursor: pointer; }
+.drcr-toggle button.on.dr { background: #1f8f4e; color: #fff; }
+.drcr-toggle button.on.cr { background: #c0392b; color: #fff; }
+.vtotals { display: flex; gap: 24px; flex-wrap: wrap; margin-top: 12px; padding: 10px 14px; border-radius: 10px; font-size: 13.5px; }
+.vtotals.ok { background: #e7f6ec; color: #1f6b34; }
+.vtotals.bad { background: #fdecea; color: #c0392b; }
+
+.acc-total td { background: #f6f8fa; border-top: 2px solid var(--ink); }
+.tb-ok { color: #1f8f4e; font-weight: 700; padding: 10px; }
+.tb-bad { color: #c0392b; font-weight: 700; padding: 10px; }
+.pl-banner { padding: 14px 18px; border-radius: 10px; font-size: 17px; font-weight: 800; }
+.pl-banner.ok { background: #e7f6ec; color: #1f6b34; }
+.pl-banner.bad { background: #fdecea; color: #c0392b; }
+.app-root.is-mobile .vline, .app-root.is-mobile .vline-head { grid-template-columns: 80px 1fr 100px 32px; }
+
 /* ── Site visits ── */
 .badge.sv-assigned { background: #eef2ff; color: #4f5bd5; }
 .badge.sv-open { background: #fff4e5; color: #b9651a; }
