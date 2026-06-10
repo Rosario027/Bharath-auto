@@ -89,6 +89,49 @@ body {
 .doc-thumb.empty { display: grid; place-items: center; color: var(--muted); font-size: 12px; }
 .doc-actions { display: flex; gap: 8px; margin-top: 10px; }
 .doc-actions .btn.xs { cursor: pointer; }
+
+/* ── Staff portal (My Workspace) ── */
+.staff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.app-root.is-mobile .staff-grid { grid-template-columns: 1fr; }
+
+.clock-card .clock-times { display: flex; gap: 26px; margin-bottom: 14px; }
+.clock-card .clock-times > div { display: flex; flex-direction: column; }
+.clock-card .clock-times span { font-size: 11px; color: var(--muted); }
+.clock-card .clock-times b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.clock-card .clock-times b.ok { color: var(--brand-green); }
+.btn.big { width: 100%; padding: 14px; font-size: 15px; margin-top: 10px; }
+.clock-done { margin-top: 12px; background: #e7f6ec; border: 1px solid #c8e8c0; color: #1f6b34; padding: 10px 14px; border-radius: 10px; font-size: 13px; }
+.fullday-box { margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+
+/* attendance calendar */
+.att-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.att-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.att-dow { text-align: center; font-size: 10px; font-weight: 700; color: var(--muted); padding: 2px 0; }
+.att-day { display: grid; place-items: center; aspect-ratio: 1; border-radius: 8px; font-size: 12px; background: #f6f8fa; color: var(--ink); }
+.att-day.pad { background: transparent; }
+.att-day.present { background: var(--brand-green); color: #fff; font-weight: 700; }
+.att-day.today { outline: 2px solid var(--brand-orange); outline-offset: -2px; }
+.att-legend { margin-top: 10px; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.att-legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.att-legend .dot.present { background: var(--brand-green); }
+
+/* tasks */
+.task-list { display: flex; flex-direction: column; gap: 12px; }
+.task-card { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; border: 1px solid var(--line); border-left: 4px solid var(--muted); border-radius: 10px; padding: 12px 14px; background: #fcfcfd; }
+.task-card.st-assigned { border-left-color: #e8a13b; }
+.task-card.st-processing { border-left-color: #4f8fd5; }
+.task-card.st-completed { border-left-color: var(--brand-green); opacity: .8; }
+.task-title { font-weight: 800; font-size: 14px; }
+.task-desc { font-size: 13px; color: var(--ink); margin-top: 4px; }
+.task-meta { font-size: 11px; color: var(--muted); margin-top: 6px; }
+.task-side { display: flex; flex-direction: column; gap: 8px; }
+.app-root.is-mobile .task-card { grid-template-columns: 1fr; }
+
+/* leave / expense rows + status badges */
+.req-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fcfcfd; margin-bottom: 8px; }
+.badge.rq-pending { background: #fff4e5; color: #b9651a; }
+.badge.rq-approved { background: #e7f6ec; color: #1f8f4e; }
+.badge.rq-rejected { background: #fdecea; color: #c0392b; }
 .sb-backdrop { position: fixed; inset: 56px 0 0 0; background: rgba(0,0,0,.4); z-index: 25; }
 
 .app-main { flex: 1; min-width: 0; overflow-y: auto; }

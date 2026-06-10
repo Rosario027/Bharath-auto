@@ -17,13 +17,18 @@ function expirySoon(d) { if (!d) return false; const days = (new Date(d) - Date.
 export default function Staff() {
   const nav = useNavigate();
   const [emps, setEmps] = useState([]);
+  const [summary, setSummary] = useState({ pendingLeaves: 0, pendingExpenses: 0, openTasks: 0 });
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setEmps(await api.listEmployees()); } finally { setLoading(false); }
+    try {
+      const [e, s] = await Promise.all([api.listEmployees(), api.staffSummary().catch(() => null)]);
+      setEmps(e);
+      if (s) setSummary(s);
+    } finally { setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -50,23 +55,33 @@ export default function Staff() {
         <div className="stat-card"><div className="stat-label">Insurance expiring (30d)</div><div className="stat-value">{expiringCount}</div></div>
       </div>
 
-      <div className="toolbar"><input className="search" placeholder="Search name or phone…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <div className="toolbar" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input className="search" placeholder="Search name or phone…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <button className="btn" onClick={() => nav('/staff-tasks')}>🗒 Tasks {summary.openTasks > 0 ? `(${summary.openTasks} open)` : ''}</button>
+        <button className="btn" onClick={() => nav('/staff-approvals')}>
+          ✅ Approvals {summary.pendingLeaves + summary.pendingExpenses > 0 ? `(${summary.pendingLeaves + summary.pendingExpenses} pending)` : ''}
+        </button>
+      </div>
 
       <div className="card table-card">
         {loading ? <div className="empty">Loading…</div> : view.length === 0 ? (
           <div className="empty"><p>No employees yet.</p><button className="btn primary" onClick={() => nav('/staff/new')}>Create the first employee file</button></div>
         ) : (
           <table className="data-table">
-            <thead><tr><th>Name</th><th>Age</th><th>Phone</th><th>Blood</th><th>Vehicle</th><th>Insurance</th><th>Today</th><th className="r">Actions</th></tr></thead>
+            <thead><tr><th>Name</th><th>Age</th><th>Phone</th><th>Vehicle</th><th>Insurance</th><th>In / Out</th><th>Today</th><th className="r">Actions</th></tr></thead>
             <tbody>
               {view.map((e) => (
                 <tr key={e.id} className="row-click" onClick={() => nav(`/staff/${e.id}`)}>
                   <td className="strong">{e.name}</td>
                   <td>{ageFrom(e.dob)}</td>
                   <td>{e.phone || '—'}</td>
-                  <td>{e.bloodGroup || '—'}</td>
                   <td className="mono">{e.vehicleNo || '—'}</td>
                   <td className={expirySoon(e.insuranceExpiry) ? 'exp-soon' : ''}>{fmtDate(e.insuranceExpiry)}</td>
+                  <td className="mono" style={{ fontSize: 12 }}>
+                    {e.clockIn ? new Date(e.clockIn).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                    {' / '}
+                    {e.clockOut ? new Date(e.clockOut).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                  </td>
                   <td onClick={(ev) => ev.stopPropagation()}>
                     <button className={`seg-toggle ${e.presentToday ? 'on' : ''}`} disabled={busy === e.id} onClick={() => togglePresent(e)}>
                       {e.presentToday ? 'Present' : 'Mark'}

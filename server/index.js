@@ -15,6 +15,8 @@ import publicRouter from './routes/public.js';
 import loginQuotesRouter from './routes/loginQuotes.js';
 import usersRouter from './routes/users.js';
 import employeesRouter from './routes/employees.js';
+import meRouter from './routes/me.js';
+import staffAdminRouter from './routes/staffAdmin.js';
 import { authRequired, adminRequired } from './lib/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -30,6 +32,8 @@ app.use('/api/public', publicRouter);                      // login-screen conte
 app.use('/api/login-quotes', loginQuotesRouter);           // admin-only (guarded in router)
 app.use('/api/users', usersRouter);                        // admin-only (guarded in router)
 app.use('/api/employees', employeesRouter);                // admin-only (guarded in router)
+app.use('/api/me', meRouter);                              // staff self-service (own data only)
+app.use('/api/staff-admin', staffAdminRouter);             // admin-only (guarded in router)
 app.use('/api/settings', authRequired, settingsRouter);   // GET both; PUT admin-only (guarded in router)
 app.use('/api/invoices', authRequired, invoicesRouter);   // both roles can raise invoices
 app.use('/api/customers', adminRequired, customersRouter); // client data — admin only

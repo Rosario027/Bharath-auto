@@ -90,6 +90,33 @@ export const api = {
   setAttendance: (id, present) => req(`/employees/${id}/attendance`, { method: 'PUT', body: JSON.stringify({ present }) }),
   createEmployeeLogin: (id, username, password) => req(`/employees/${id}/login`, { method: 'POST', body: JSON.stringify({ username, password }) }),
 
+  // staff self-service (logged-in staff member, own data only)
+  getMyProfile: () => req('/me/profile'),
+  getMyAttendance: (month) => req(`/me/attendance${month ? `?month=${month}` : ''}`),
+  clockIn: () => req('/me/clock-in', { method: 'POST' }),
+  clockOut: (workSummary) => req('/me/clock-out', { method: 'POST', body: JSON.stringify({ workSummary }) }),
+  markFullDay: (workSummary, date) => req('/me/full-day', { method: 'POST', body: JSON.stringify({ workSummary, date }) }),
+  myLeaves: () => req('/me/leaves'),
+  requestLeave: (data) => req('/me/leaves', { method: 'POST', body: JSON.stringify(data) }),
+  myExpenses: () => req('/me/expenses'),
+  claimExpense: (data) => req('/me/expenses', { method: 'POST', body: JSON.stringify(data) }),
+  myExpenseReceipt: (id) => req(`/me/expenses/${id}/receipt`),
+  myTasks: () => req('/me/tasks'),
+  updateMyTask: (id, data) => req(`/me/tasks/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  // staff admin (approvals, tasks, attendance visibility)
+  staffSummary: () => req('/staff-admin/summary'),
+  adminAttendance: (params = '') => req(`/staff-admin/attendance${params}`),
+  adminLeaves: () => req('/staff-admin/leaves'),
+  setLeaveStatus: (id, status, adminComment) => req(`/staff-admin/leaves/${id}`, { method: 'PUT', body: JSON.stringify({ status, adminComment }) }),
+  adminExpenses: () => req('/staff-admin/expenses'),
+  setExpenseStatus: (id, status, adminComment) => req(`/staff-admin/expenses/${id}`, { method: 'PUT', body: JSON.stringify({ status, adminComment }) }),
+  adminExpenseReceipt: (id) => req(`/staff-admin/expenses/${id}/receipt`),
+  adminTasks: () => req('/staff-admin/tasks'),
+  assignTask: (data) => req('/staff-admin/tasks', { method: 'POST', body: JSON.stringify(data) }),
+  updateTask: (id, data) => req(`/staff-admin/tasks/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteTask: (id) => req(`/staff-admin/tasks/${id}`, { method: 'DELETE' }),
+
   // customers / clients
   listCustomers: () => req('/customers'),
   getCustomer: (id) => req(`/customers/${id}`),

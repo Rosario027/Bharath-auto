@@ -106,16 +106,66 @@ model Employee {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   attendance      Attendance[]
+  leaves          LeaveRequest[]
+  expenses        ExpenseClaim[]
+  tasks           StaffTask[]
 }
 
 model Attendance {
-  id         Int      @id @default(autoincrement())
-  employeeId Int
-  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  date       String   // yyyy-mm-dd
-  present    Boolean  @default(true)
+  id          Int       @id @default(autoincrement())
+  employeeId  Int
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date        String    // yyyy-mm-dd
+  present     Boolean   @default(true)
+  clockIn     DateTime?
+  clockOut    DateTime?
+  workSummary String    @default("") // mandatory brief of the day's work (on clock-out / full-day)
+  manual      Boolean   @default(false) // true when marked as full-day without clock in/out
 
   @@unique([employeeId, date])
+}
+
+// Staff leave requests — staff raise, admin approves/rejects.
+model LeaveRequest {
+  id           Int      @id @default(autoincrement())
+  employeeId   Int
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  fromDate     String   // yyyy-mm-dd
+  toDate       String   // yyyy-mm-dd
+  reason       String   @default("")
+  status       String   @default("pending") // pending | approved | rejected
+  adminComment String   @default("")
+  createdAt    DateTime @default(now())
+}
+
+// Staff expense claims (travel etc.) with an optional receipt image (<= 2MB).
+model ExpenseClaim {
+  id           Int      @id @default(autoincrement())
+  employeeId   Int
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date         String   // yyyy-mm-dd
+  category     String   @default("Travel")
+  amount       Float    @default(0)
+  description  String   @default("")
+  receipt      String?  // image data URL, <= 2MB
+  status       String   @default("pending") // pending | approved | rejected
+  adminComment String   @default("")
+  createdAt    DateTime @default(now())
+}
+
+// Tasks assigned by admin to a staff member.
+model StaffTask {
+  id           Int      @id @default(autoincrement())
+  employeeId   Int
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  title        String
+  description  String   @default("")
+  dueDate      String?  // yyyy-mm-dd
+  status       String   @default("assigned") // assigned (yet to be taken) | processing | completed
+  staffComment String   @default("")
+  assignedBy   String   @default("Admin")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 // Rotating login-screen quotes (Thirukkural). One is shown per day,

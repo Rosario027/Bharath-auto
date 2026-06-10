@@ -54,10 +54,21 @@ export async function changePassword(username, currentPassword, newPassword) {
 }
 
 export async function authenticate(username, password) {
-  const user = await prisma.user.findUnique({ where: { username: (username || '').trim() } });
+  const user = await prisma.user.findUnique({
+    where: { username: (username || '').trim() },
+    include: { employee: { select: { id: true, name: true } } },
+  });
   if (!user || !verifyPassword(password, user.passHash)) return null;
   const payload = { u: user.username, role: user.role, exp: Date.now() + TTL_MS };
-  return { token: sign(payload), user: { username: user.username, role: user.role } };
+  return {
+    token: sign(payload),
+    user: {
+      username: user.username,
+      role: user.role,
+      employeeId: user.employee?.id ?? null,
+      employeeName: user.employee?.name ?? null,
+    },
+  };
 }
 
 function readToken(req) {

@@ -37,6 +37,7 @@ export default function EmployeeEdit() {
   const [saving, setSaving] = useState(false);
   const [busyDoc, setBusyDoc] = useState('');
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [attLog, setAttLog] = useState([]);
   const [toast, setToast] = useState(null);
   const flash = (msg, kind = 'ok') => { setToast({ msg, kind }); setTimeout(() => setToast(null), 3000); };
 
@@ -46,6 +47,7 @@ export default function EmployeeEdit() {
       setEmp({ ...e, dob: toDateInput(e.dob), insuranceExpiry: toDateInput(e.insuranceExpiry) });
       setPresentToday(!!e.presentToday);
     }).catch((e) => flash(e.message, 'err'));
+    api.adminAttendance(`?employeeId=${id}`).then(setAttLog).catch(() => {});
   }, [id, isEdit]);
 
   const set = (patch) => setEmp((p) => ({ ...p, ...patch }));
@@ -220,6 +222,26 @@ export default function EmployeeEdit() {
           })}
         </div>
       </section>
+
+      {savedId && attLog.length > 0 && (
+        <section className="fsec">
+          <h3>Attendance Log <span className="hint">latest {attLog.length}</span></h3>
+          <table className="data-table">
+            <thead><tr><th>Date</th><th>In</th><th>Out</th><th>Type</th><th>Work summary</th></tr></thead>
+            <tbody>
+              {attLog.map((a) => (
+                <tr key={a.id}>
+                  <td className="mono">{a.date}</td>
+                  <td>{a.clockIn ? new Date(a.clockIn).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                  <td>{a.clockOut ? new Date(a.clockOut).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                  <td>{a.manual ? 'Full day' : (a.present ? 'Clock' : 'Absent')}</td>
+                  <td style={{ maxWidth: 320 }}>{a.workSummary || <span className="subtle">—</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       {savedId && (
         <div style={{ marginTop: 4 }}><button className="btn danger" onClick={remove}>Delete employee file</button></div>

@@ -2,12 +2,13 @@
 import { Router } from 'express';
 import { prisma } from '../lib/db.js';
 import { adminRequired, hashPassword } from '../lib/auth.js';
+import { localDate } from '../lib/dates.js';
 
 const router = Router();
 router.use(adminRequired);
 
 const DOC_FIELDS = { aadhar: 'aadharDoc', pan: 'panDoc', license: 'licenseDoc', rc: 'rcDoc', insurance: 'insuranceDoc' };
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localDate();
 
 function scalarData(b) {
   return {
@@ -40,6 +41,8 @@ router.get('/', async (req, res, next) => {
       id: e.id, name: e.name, dob: e.dob, phone: e.phone, email: e.email, bloodGroup: e.bloodGroup,
       vehicleNo: e.vehicleNo, insuranceExpiry: e.insuranceExpiry, active: e.active,
       presentToday: e.attendance.length ? e.attendance[0].present : false,
+      clockIn: e.attendance[0]?.clockIn || null,
+      clockOut: e.attendance[0]?.clockOut || null,
       docs: {
         aadhar: !!e.aadharDoc, pan: !!e.panDoc, license: !!e.licenseDoc, rc: !!e.rcDoc, insurance: !!e.insuranceDoc,
       },
