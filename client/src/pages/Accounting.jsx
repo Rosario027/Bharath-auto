@@ -24,6 +24,7 @@ export default function Accounting() {
   const [txns, setTxns] = useState([]);
   const [txnTab, setTxnTab] = useState('pending');
   const [unpaid, setUnpaid] = useState([]);
+  const [bills, setBills] = useState([]);
   const [catSel, setCatSel] = useState({}); // txnId -> { ledgerId, invoiceId }
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
@@ -83,9 +84,10 @@ export default function Accounting() {
   // ── Bank transaction categorization ──
   const loadTxns = useCallback(async () => {
     try {
-      const [t, inv] = await Promise.all([api.bankTxns(), api.listInvoices().catch(() => [])]);
+      const [t, inv, ob] = await Promise.all([api.bankTxns(), api.listInvoices().catch(() => []), api.openBills().catch(() => [])]);
       setTxns(t);
       setUnpaid(inv.filter((i) => i.docType === 'invoice' && i.status !== 'deleted' && (i.amountPaid || 0) < i.grandTotal - 0.5));
+      setBills(ob);
     } catch { /* ignore */ }
   }, []);
   useEffect(() => { loadTxns(); }, [loadTxns, vouchers]);
@@ -98,11 +100,14 @@ export default function Accounting() {
       if (sel.invoiceId && !toSuspense) {
         const r = await api.mapTxnToInvoice(t.id, Number(sel.invoiceId));
         flash(r.excess > 0 ? `Mapped — ₹${formatINR(r.applied)} settled, excess ₹${formatINR(r.excess)} parked in "To Be Verified"` : 'Mapped to invoice — AR settled');
+      } else if (sel.billId && !toSuspense) {
+        const r = await api.mapTxnToBill(t.id, Number(sel.billId));
+        flash(r.excess > 0 ? `Mapped — ₹${formatINR(r.applied)} paid against bill, excess ₹${formatINR(r.excess)} parked in "To Be Verified"` : 'Mapped to purchase bill — AP settled');
       } else if (toSuspense) {
         await api.categorizeTxn(t.id, { toSuspense: true });
         flash('Parked in "To Be Verified" — categorise properly later');
       } else {
-        if (!sel.ledgerId) return flash('Pick a ledger or an invoice first', 'err');
+        if (!sel.ledgerId) return flash('Pick a ledger, an invoice or a purchase bill first', 'err');
         await api.categorizeTxn(t.id, { ledgerId: Number(sel.ledgerId) });
         flash('Categorised & posted to the books');
       }
@@ -203,16 +208,16 @@ export default function Accounting() {
       </section>
 
       {/* Bank transaction categorization */}
-      {txns.length > 0 && (
+      {(
         <section className="fsec">
           <div className="fsec-head">
-            <h3>Bank Transactions · Categorization</h3>
+            <h3>Bank Transactions · Categorization <span className="hint">AR / AP mapping</span></h3>
             <div className="fsec-tools">
               <button className={`seg-toggle ${txnTab === 'pending' ? 'on' : ''}`} onClick={() => setTxnTab('pending')}>Pending ({tCount('pending')})</button>
               <button className={`seg-toggle ${txnTab === 'done' ? 'on' : ''}`} onClick={() => setTxnTab('done')}>Categorized ({tCount('done')})</button>
             </div>
           </div>
-          {txnView.length === 0 ? <p className="subtle">{txnTab === 'pending' ? 'Nothing pending — all transactions are categorised. ✓' : 'No categorised transactions yet.'}</p> : (
+          {txnView.length === 0 ? <p className="subtle">{txns.length === 0 ? 'No bank transactions yet — upload a bank statement above (leave the Ledger column blank to categorise here: map receipts to sales invoices, payments to purchase bills, or post to any ledger).' : txnTab === 'pending' ? 'Nothing pending — all transactions are categorised. ✓' : 'No categorised transactions yet.'}</p> : (
             <table className="data-table">
               <thead><tr><th>Date</th><th>Description</th><th className="r">In</th><th className="r">Out</th><th>Bank</th>{txnTab === 'pending' ? <th style={{ minWidth: 330 }}>Categorise as</th> : <th>Categorised as</th>}<th className="r">{txnTab === 'pending' ? 'Action' : 'Status'}</th></tr></thead>
               <tbody>
@@ -228,14 +233,20 @@ export default function Accounting() {
                       {txnTab === 'pending' ? (
                         <td>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            <select value={sel.ledgerId || ''} onChange={(e) => setSel(t.id, { ledgerId: e.target.value, invoiceId: '' })}>
+                            <select value={sel.ledgerId || ''} onChange={(e) => setSel(t.id, { ledgerId: e.target.value, invoiceId: '', billId: '' })}>
                               <option value="">— Ledger (expense / income / cash…) —</option>
                               {ledgers.filter((l) => l.id !== t.bankLedgerId).map((l) => <option key={l.id} value={l.id}>{l.name} ({l.group?.name})</option>)}
                             </select>
                             {t.credit > 0 && unpaid.length > 0 && (
-                              <select value={sel.invoiceId || ''} onChange={(e) => setSel(t.id, { invoiceId: e.target.value, ledgerId: '' })}>
+                              <select value={sel.invoiceId || ''} onChange={(e) => setSel(t.id, { invoiceId: e.target.value, ledgerId: '', billId: '' })}>
                                 <option value="">— or map to unpaid invoice (AR) —</option>
                                 {unpaid.map((i) => <option key={i.id} value={i.id}>{i.invoiceNo} · {i.buyerName} · ₹{formatINR(i.grandTotal - (i.amountPaid || 0))} due</option>)}
+                              </select>
+                            )}
+                            {t.debit > 0 && bills.length > 0 && (
+                              <select value={sel.billId || ''} onChange={(e) => setSel(t.id, { billId: e.target.value, ledgerId: '', invoiceId: '' })}>
+                                <option value="">— or map to purchase bill (AP) —</option>
+                                {bills.map((b) => <option key={b.id} value={b.id}>{b.voucherNo} · {b.creditor} · ₹{formatINR(b.outstanding)} due</option>)}
                               </select>
                             )}
                           </div>

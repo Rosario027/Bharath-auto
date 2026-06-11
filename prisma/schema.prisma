@@ -89,7 +89,9 @@ model BankTxn {
   status        String   @default("pending") // pending | categorized | partial (excess parked in To Be Verified)
   voucherId     Int?
   categorizedAs String   @default("")
-  invoiceId     Int?
+  invoiceId     Int?     // AR: mapped sales invoice
+  billVoucherId Int?     // AP: mapped purchase bill (AccVoucher of vtype purchase)
+  appliedAmount Float    @default(0) // portion settled against the invoice/bill
   byUsername    String   @default("")
   createdAt     DateTime @default(now())
 }

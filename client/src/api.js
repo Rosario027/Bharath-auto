@@ -145,6 +145,8 @@ export const api = {
   bankTxns: (status) => req(`/accounting/bank-txns${status ? `?status=${status}` : ''}`),
   categorizeTxn: (id, data) => req(`/accounting/bank-txns/${id}/categorize`, { method: 'POST', body: JSON.stringify(data) }),
   mapTxnToInvoice: (id, invoiceId) => req(`/accounting/bank-txns/${id}/map-invoice`, { method: 'POST', body: JSON.stringify({ invoiceId }) }),
+  mapTxnToBill: (id, voucherId) => req(`/accounting/bank-txns/${id}/map-bill`, { method: 'POST', body: JSON.stringify({ voucherId }) }),
+  openBills: () => req('/accounting/open-bills'),
   updateUser: (id, data) => req(`/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   myAttendanceDay: (date) => req(`/me/attendance/${date}`),
   myAttendanceRequests: () => req('/me/attendance-requests'),

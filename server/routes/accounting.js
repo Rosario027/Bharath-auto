@@ -429,7 +429,7 @@ router.get('/bank-template', async (req, res, next) => {
     info.addRow([]);
     [
       '1. Fill ONLY the "Bank Entries" sheet. Do not rename sheets or change the header row.',
-      '2. Date — format YYYY-MM-DD (e.g. 2026-06-11) or use an Excel date cell.',
+      '2. Date — YYYY-MM-DD or DD-MM-YYYY (e.g. 2026-06-11 or 11-06-2026), or an Excel date cell.',
       '3. Debit — amount that went OUT of the bank. Credit — amount that came IN. Numbers only.',
       '4. Fill exactly ONE of Debit / Credit per row — never both, never neither.',
       '5. Description — narration for the entry (e.g. "NEFT rent June").',
@@ -437,7 +437,8 @@ router.get('/bank-template', async (req, res, next) => {
       '   or leave it BLANK to import as "pending" and categorise inside the app later.',
       '7. Money IN  → posted as Receipt:  Dr Bank / Cr Ledger.',
       '   Money OUT → posted as Payment: Dr Ledger / Cr Bank. (Cash ledger → Contra.)',
-      '8. If anything is invalid the whole file is rejected with row-wise errors — fix and re-upload.',
+      '8. After editing in Excel click "Enable Editing" if prompted, then SAVE before uploading.',
+      '9. If anything is invalid the whole file is rejected with row-wise errors — fix and re-upload.',
     ].forEach((t) => info.addRow([t]));
     info.addRow([]);
     info.getCell('B1').value = 'AVAILABLE LEDGERS (copy-paste)';
@@ -477,49 +478,116 @@ router.post('/bank-import', async (req, res, next) => {
     try { await wb.xlsx.load(Buffer.from(dataBase64, 'base64')); }
     catch { return res.status(400).json({ error: 'Not a valid .xlsx file — download the template and try again.' }); }
 
-    const sheet = wb.getWorksheet('Bank Entries') || wb.worksheets[1] || wb.worksheets[0];
-    if (!sheet) return res.status(400).json({ error: 'Sheet "Bank Entries" not found — use the provided template.' });
-    const head = (i) => String(sheet.getRow(1).getCell(i).value || '').trim().toLowerCase();
-    if (head(1) !== 'date' || head(3) !== 'debit' || head(4) !== 'credit' || head(5) !== 'ledger') {
-      return res.status(400).json({ error: 'Header row changed — expected Date | Description | Debit | Credit | Ledger. Re-download the template.' });
-    }
+    // Unwrap every cell shape Excel/Sheets/LibreOffice can produce:
+    // plain values, Date cells, formulas {result}, rich text, hyperlinks.
+    const cellVal = (cell) => {
+      let v = cell?.value;
+      if (v === null || v === undefined) return null;
+      if (v instanceof Date) return v;
+      if (typeof v === 'object') {
+        if ('result' in v) v = v.result;
+        if (v && typeof v === 'object' && Array.isArray(v.richText)) v = v.richText.map((t) => t.text).join('');
+        else if (v && typeof v === 'object' && 'text' in v) v = typeof v.text === 'object' && v.text?.richText ? v.text.richText.map((t) => t.text).join('') : v.text;
+        if (v instanceof Date) return v;
+        if (v === null || v === undefined || typeof v === 'object') return v ?? null;
+      }
+      return v;
+    };
+    const txt = (v) => (v === null || v === undefined ? '' : v instanceof Date ? v.toISOString().slice(0, 10) : String(v).trim());
+
+    // Accept Excel date cells, Excel serial numbers, YYYY-MM-DD, and the
+    // Indian formats people actually type: DD-MM-YYYY, DD/MM/YYYY, DD.MM.YYYY.
+    const parseDate = (v) => {
+      if (v instanceof Date) return v.toISOString().slice(0, 10);
+      if (typeof v === 'number' && v > 20000 && v < 80000) { // Excel serial
+        const d = new Date(Date.UTC(1899, 11, 30) + v * 86400000);
+        return d.toISOString().slice(0, 10);
+      }
+      const s = txt(v);
+      if (isValidDate(s)) return s;
+      const m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/); // dd-mm-yyyy
+      if (m) {
+        const [, d, mo, y] = m;
+        const iso = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        if (isValidDate(iso)) return iso;
+      }
+      const m2 = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/); // yyyy/m/d
+      if (m2) {
+        const [, y, mo, d] = m2;
+        const iso = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        if (isValidDate(iso)) return iso;
+      }
+      return null;
+    };
+    // Accept "1,50,000", "₹ 5000", "Rs. 5000", plain numbers.
+    const parseAmount = (v) => {
+      if (v === null || v === undefined) return 0;
+      if (typeof v === 'number') return v;
+      const s = txt(v).replace(/[₹,\s]/g, '').replace(/^rs\.?/i, '');
+      if (s === '' || s === '-') return 0;
+      const n = Number(s);
+      return Number.isFinite(n) ? n : NaN;
+    };
+
+    // Find the data sheet: by name first, else any sheet whose first rows
+    // contain a Date|Debit|Credit header. Header positions resolved by NAME,
+    // so reordered/inserted columns still work.
+    const findSheet = () => {
+      const candidates = [
+        wb.worksheets.find((ws) => ws.name.trim().toLowerCase() === 'bank entries'),
+        ...wb.worksheets,
+      ].filter(Boolean);
+      for (const ws of candidates) {
+        for (let r = 1; r <= Math.min(5, ws.rowCount); r++) {
+          const cols = {};
+          ws.getRow(r).eachCell({ includeEmpty: false }, (cell, colNo) => {
+            const h = txt(cellVal(cell)).toLowerCase();
+            if (['date', 'description', 'narration', 'debit', 'withdrawal', 'credit', 'deposit', 'ledger'].includes(h)) {
+              if (h === 'narration') cols.description = colNo;
+              else if (h === 'withdrawal') cols.debit = colNo;
+              else if (h === 'deposit') cols.credit = colNo;
+              else cols[h] = cols[h] ?? colNo;
+            }
+          });
+          if (cols.date && cols.debit && cols.credit) return { ws, headerRow: r, cols };
+        }
+      }
+      return null;
+    };
+    const found = findSheet();
+    if (!found) return res.status(400).json({ error: 'Could not find the "Bank Entries" sheet (header row Date | Description | Debit | Credit | Ledger). Re-download the template and fill the second sheet.' });
+    const { ws: sheet, headerRow, cols } = found;
 
     const ledgers = await prisma.accLedger.findMany();
     const byName = new Map(ledgers.map((l) => [l.name.trim().toLowerCase(), l]));
     const errors = [];
     const rows = [];
+    let seen = 0, blank = 0, exampleRows = 0;
 
-    sheet.eachRow((row, rowNo) => {
-      if (rowNo === 1) return;
-      const raw = (i) => { const v = row.getCell(i).value; return v && typeof v === 'object' && 'result' in v ? v.result : v; };
-      const vals = [raw(1), raw(2), raw(3), raw(4), raw(5)];
-      if (vals.every((v) => v === null || v === undefined || String(v).trim() === '')) return; // skip blank rows
-      const desc = String(vals[1] ?? '').trim();
-      if (desc.toUpperCase().startsWith('EXAMPLE')) return; // skip sample row
+    sheet.eachRow({ includeEmpty: false }, (row, rowNo) => {
+      if (rowNo <= headerRow) return;
+      const raw = (key) => (cols[key] ? cellVal(row.getCell(cols[key])) : null);
+      const vals = { date: raw('date'), desc: raw('description'), debit: raw('debit'), credit: raw('credit'), ledger: raw('ledger') };
+      seen++;
+      if (Object.values(vals).every((v) => txt(v) === '')) { blank++; return; }
+      const desc = txt(vals.desc);
+      if (desc.toUpperCase().startsWith('EXAMPLE')) { exampleRows++; return; }
 
-      // Date
-      let date = '';
-      const dv = vals[0];
-      if (dv instanceof Date) date = dv.toISOString().slice(0, 10);
-      else if (isValidDate(String(dv || '').trim())) date = String(dv).trim();
-      else errors.push({ row: rowNo, category: 'Invalid date', issue: `"${dv ?? ''}" — use YYYY-MM-DD (e.g. 2026-06-11)` });
+      const date = parseDate(vals.date);
+      if (!date) errors.push({ row: rowNo, category: 'Invalid date', issue: `"${txt(vals.date)}" — use YYYY-MM-DD or DD-MM-YYYY (e.g. 2026-06-11 or 11-06-2026)` });
 
-      // Amounts
-      const numOf = (v, label) => {
-        if (v === null || v === undefined || String(v).trim() === '') return 0;
-        const n = Number(v);
-        if (!Number.isFinite(n) || n < 0) { errors.push({ row: rowNo, category: 'Amount not a number', issue: `${label} contains "${v}" — numbers only` }); return NaN; }
-        return n;
-      };
-      const debit = numOf(vals[2], 'Debit');
-      const credit = numOf(vals[3], 'Credit');
+      const debit = parseAmount(vals.debit);
+      const credit = parseAmount(vals.credit);
+      if (Number.isNaN(debit)) errors.push({ row: rowNo, category: 'Amount not a number', issue: `Debit contains "${txt(vals.debit)}" — numbers only` });
+      if (Number.isNaN(credit)) errors.push({ row: rowNo, category: 'Amount not a number', issue: `Credit contains "${txt(vals.credit)}" — numbers only` });
       if (Number.isFinite(debit) && Number.isFinite(credit)) {
+        if (debit < 0 || credit < 0) errors.push({ row: rowNo, category: 'Negative amount', issue: 'Amounts must be positive — use the other column instead of a minus sign' });
         if (debit > 0 && credit > 0) errors.push({ row: rowNo, category: 'Both amounts filled', issue: 'Fill only ONE of Debit / Credit per row' });
         if (debit === 0 && credit === 0) errors.push({ row: rowNo, category: 'No amount', issue: 'Either Debit or Credit must have a value' });
       }
 
       // Ledger — optional. Blank → pending categorization in the app.
-      const lname = String(vals[4] ?? '').trim();
+      const lname = txt(vals.ledger);
       let ledger = null;
       if (lname) {
         ledger = byName.get(lname.toLowerCase());
@@ -527,10 +595,15 @@ router.post('/bank-import', async (req, res, next) => {
         else if (ledger.id === bank.id) errors.push({ row: rowNo, category: 'Invalid ledger', issue: 'Counter ledger cannot be the bank ledger itself' });
       }
 
-      rows.push({ rowNo, date, desc, debit: debit || 0, credit: credit || 0, ledger });
+      rows.push({ rowNo, date: date || '', desc, debit: Number.isFinite(debit) ? debit : 0, credit: Number.isFinite(credit) ? credit : 0, ledger });
     });
 
-    if (rows.length === 0 && errors.length === 0) return res.status(400).json({ error: 'No data rows found in "Bank Entries".' });
+    if (rows.length === 0 && errors.length === 0) {
+      const hint = exampleRows > 0 && seen === exampleRows
+        ? 'Only the EXAMPLE row was found. Did you upload the freshly-downloaded template instead of your edited copy? In Excel, click "Enable Editing", enter your rows, SAVE, then upload that saved file.'
+        : `No data rows found below the header (rows scanned: ${seen}, blank: ${blank}). Enter your entries in the "Bank Entries" sheet starting under the header row, save the file, then upload.`;
+      return res.status(400).json({ error: hint });
+    }
     if (errors.length) return res.status(400).json({ error: `File rejected — ${errors.length} issue(s) found. Fix and re-upload.`, errors });
 
     let posted = 0, pending = 0;
@@ -657,7 +730,102 @@ router.post('/bank-txns/:id/map-invoice', async (req, res, next) => {
         status: excess > 0 ? 'partial' : 'categorized',
         voucherId: voucher.id,
         invoiceId: invoice.id,
+        appliedAmount: applied,
         categorizedAs: `Invoice ${invoice.invoiceNo}${excess > 0 ? ' + To Be Verified' : ''}`,
+      },
+    });
+    res.json({ ...updated, applied, excess });
+  } catch (e) { next(e); }
+});
+
+// ── AP: open purchase bills ──
+// Outstanding is derived from the books themselves: every Dr to a creditor
+// ledger (direct payment voucher, bank import, categorization or bill
+// mapping) is allocated FIFO across that creditor's purchase bills by date —
+// so paying cash, bank or journal all reduce the right bills automatically.
+async function openBills() {
+  const [bills, creditorGroup] = await Promise.all([
+    prisma.accVoucher.findMany({
+      where: { vtype: 'purchase' },
+      include: { lines: { include: { ledger: { include: { group: true } } } } },
+      orderBy: [{ date: 'asc' }, { id: 'asc' }],
+    }),
+    prisma.accGroup.findUnique({ where: { name: 'Sundry Creditors' } }),
+  ]);
+  if (!creditorGroup) return [];
+
+  // Total Dr per creditor ledger across ALL vouchers except the bills themselves.
+  const drLines = await prisma.accVoucherLine.findMany({
+    where: { debit: { gt: 0 }, ledger: { groupId: creditorGroup.id }, voucher: { vtype: { not: 'purchase' } } },
+    select: { ledgerId: true, debit: true },
+  });
+  const paidByCreditor = new Map();
+  for (const l of drLines) paidByCreditor.set(l.ledgerId, r2((paidByCreditor.get(l.ledgerId) || 0) + l.debit));
+
+  const result = [];
+  for (const b of bills) {
+    const credLines = b.lines.filter((l) => l.credit > 0 && l.ledger.groupId === creditorGroup.id);
+    if (!credLines.length) continue;
+    const ledgerId = credLines[0].ledgerId;
+    const total = r2(credLines.reduce((s, l) => s + l.credit, 0));
+    const pool = paidByCreditor.get(ledgerId) || 0;
+    const paid = r2(Math.min(total, pool));
+    paidByCreditor.set(ledgerId, r2(pool - paid)); // FIFO: oldest bill consumes payments first
+    result.push({
+      id: b.id, voucherNo: b.voucherNo, date: b.date, refNo: b.refNo,
+      creditor: credLines[0].ledger.name, total, paid, outstanding: r2(total - paid),
+    });
+  }
+  return result;
+}
+
+router.get('/open-bills', async (req, res, next) => {
+  try { res.json((await openBills()).filter((b) => b.outstanding > 0.5)); } catch (e) { next(e); }
+});
+
+// Map a money-out transaction to a purchase bill (AP settlement).
+// Excess over the bill's outstanding is parked in "To Be Verified".
+router.post('/bank-txns/:id/map-bill', async (req, res, next) => {
+  try {
+    const txn = await prisma.bankTxn.findUnique({ where: { id: Number(req.params.id) } });
+    if (!txn) return res.status(404).json({ error: 'Transaction not found' });
+    if (txn.status !== 'pending') return res.status(400).json({ error: 'Already categorized' });
+    if (!(txn.debit > 0)) return res.status(400).json({ error: 'Only money-out transactions can be mapped to purchase bills' });
+    const bill = (await openBills()).find((b) => b.id === Number(req.body?.voucherId));
+    if (!bill) return res.status(400).json({ error: 'Pick a valid purchase bill' });
+    if (bill.outstanding <= 0) return res.status(400).json({ error: 'That bill is already fully paid' });
+
+    const applied = Math.min(txn.debit, bill.outstanding);
+    const excess = r2(txn.debit - applied);
+    const bank = await prisma.accLedger.findUnique({ where: { id: txn.bankLedgerId } });
+    const creditor = await ledgerByName(prisma, bill.creditor, 'Sundry Creditors');
+    const suspense = excess > 0 ? await ledgerByName(prisma, 'To Be Verified', 'Suspense A/c') : null;
+
+    const voucher = await prisma.$transaction(async (tx) => tx.accVoucher.create({
+      data: {
+        voucherNo: await nextVoucherNo(tx, 'payment'),
+        vtype: 'payment', date: txn.date,
+        narration: `${txn.description || 'Bank payment'} — settled against ${bill.voucherNo} (${bill.creditor})${excess > 0 ? ` (excess ₹${excess} parked in To Be Verified)` : ''}`,
+        refNo: bill.refNo || bill.voucherNo,
+        createdBy: req.user.username,
+        lines: {
+          create: [
+            { ledgerId: creditor.id, debit: applied, credit: 0, sortOrder: 0 },
+            ...(suspense ? [{ ledgerId: suspense.id, debit: excess, credit: 0, sortOrder: 1 }] : []),
+            { ledgerId: bank.id, debit: 0, credit: txn.debit, sortOrder: 2 },
+          ],
+        },
+      },
+    }));
+
+    const updated = await prisma.bankTxn.update({
+      where: { id: txn.id },
+      data: {
+        status: excess > 0 ? 'partial' : 'categorized',
+        voucherId: voucher.id,
+        billVoucherId: bill.id,
+        appliedAmount: applied,
+        categorizedAs: `Bill ${bill.voucherNo} · ${bill.creditor}${excess > 0 ? ' + To Be Verified' : ''}`,
       },
     });
     res.json({ ...updated, applied, excess });
