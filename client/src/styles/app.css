@@ -167,6 +167,9 @@ body {
 .btn-logout { display: inline-flex; align-items: center; gap: 6px; background: #c0392b; border: none; color: #fff; font-weight: 800; font-size: 13px; padding: 8px 16px; border-radius: 9px; cursor: pointer; box-shadow: 0 2px 8px rgba(192,57,43,.4); }
 .btn-logout:hover { background: #a93226; }
 
+/* bank recon import summary */
+.import-summary { margin-top: 14px; border: 1px solid #bfe3c8; background: #f1faf3; border-left: 4px solid #1f8f4e; color: #1c5c33; border-radius: 10px; padding: 12px 14px; font-size: 13.5px; }
+
 /* bank recon pending alert */
 .recon-alert { display: block; width: 100%; text-align: left; background: #fff7ed; border: 1px solid #f5cf9f; border-left: 4px solid var(--brand-orange); color: #8a5a18; border-radius: 10px; padding: 12px 16px; font-size: 13.5px; cursor: pointer; margin-bottom: 16px; }
 .recon-alert:hover { background: #fff1dd; }

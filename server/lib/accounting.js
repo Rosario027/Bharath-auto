@@ -134,6 +134,54 @@ export async function postInvoiceToBooks(invoice) {
   });
 }
 
+// Re-post an EDITED invoice: replace the linked voucher's lines with the
+// recomputed amounts and journal the change (MCA audit trail).
+export async function repostInvoiceToBooks(invoice, username = 'system') {
+  const existing = await prisma.accVoucher.findUnique({ where: { sourceInvoiceId: invoice.id }, include: { lines: true } });
+  if (!existing) return postInvoiceToBooks(invoice);
+
+  const totals = computeTotals(invoice);
+  const isCN = invoice.docType === 'credit-note';
+  const oldTotal = r2(existing.lines.reduce((s, l) => s + l.debit, 0));
+
+  return prisma.$transaction(async (tx) => {
+    const customer = await ledgerByName(tx, invoice.buyerName || 'Cash Customer', 'Sundry Debtors');
+    const sales = await ledgerByName(tx, 'Sales', 'Sales Accounts');
+    const lines = [];
+    const push = (ledgerId, debit, credit) => { if (r2(debit) || r2(credit)) lines.push({ ledgerId, debit: r2(debit), credit: r2(credit), sortOrder: lines.length }); };
+    const D = (id, amt) => (isCN ? push(id, 0, amt) : push(id, amt, 0));
+    const C = (id, amt) => (isCN ? push(id, amt, 0) : push(id, 0, amt));
+    D(customer.id, totals.grandTotal);
+    C(sales.id, totals.subTotal);
+    if (totals.cgstAmount) C((await ledgerByName(tx, 'CGST Output', 'Duties & Taxes')).id, totals.cgstAmount);
+    if (totals.sgstAmount) C((await ledgerByName(tx, 'SGST Output', 'Duties & Taxes')).id, totals.sgstAmount);
+    if (totals.igstAmount) C((await ledgerByName(tx, 'IGST Output', 'Duties & Taxes')).id, totals.igstAmount);
+    if (Math.abs(totals.roundOff) >= 0.005) {
+      const ro = await ledgerByName(tx, 'Round Off', 'Indirect Expenses');
+      if (totals.roundOff > 0) C(ro.id, totals.roundOff); else D(ro.id, -totals.roundOff);
+    }
+
+    await tx.accVoucherLine.deleteMany({ where: { voucherId: existing.id } });
+    return tx.accVoucher.update({
+      where: { id: existing.id },
+      data: {
+        date: d10(invoice.invoiceDate),
+        narration: `Auto-posted from ${invoice.docType === 'invoice' ? 'invoice' : invoice.docType} ${invoice.invoiceNo} (${invoice.buyerName})`,
+        editCount: existing.editCount + 1,
+        lines: { create: lines },
+        edits: { create: { byUsername: username, summary: `Source ${invoice.invoiceNo} edited — amount ${oldTotal} → ${r2(totals.grandTotal)}` } },
+      },
+    });
+  });
+}
+
+// Remove a deleted invoice's voucher from the books.
+export async function removeInvoiceFromBooks(invoiceId) {
+  const v = await prisma.accVoucher.findUnique({ where: { sourceInvoiceId: invoiceId } });
+  if (v) await prisma.accVoucher.delete({ where: { id: v.id } });
+  return !!v;
+}
+
 // Post every invoice that isn't in the books yet (backfill / sync button).
 export async function syncAllInvoices() {
   const invoices = await prisma.invoice.findMany({ where: { status: { not: 'deleted' } }, include: { items: true } });

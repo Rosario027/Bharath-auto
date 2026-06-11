@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../lib/db.js';
 import { computeTotals } from '../lib/calc.js';
 import { getSettings } from './settings.js';
-import { postInvoiceToBooks } from '../lib/accounting.js';
+import { postInvoiceToBooks, repostInvoiceToBooks, removeInvoiceFromBooks } from '../lib/accounting.js';
 
 const router = Router();
 
@@ -274,6 +274,10 @@ router.put('/:id', async (req, res, next) => {
       });
     });
 
+    // Keep the books in sync: replace the linked voucher's lines with the
+    // edited amounts (change recorded in the MCA audit trail).
+    repostInvoiceToBooks(updated, req.user?.username || 'system').catch((err) => console.error('[accounting] re-post failed:', err.message));
+
     res.json(updated);
   } catch (e) {
     if (e.code === 'P2002') return res.status(409).json({ error: 'Invoice number already exists' });
@@ -284,12 +288,35 @@ router.put('/:id', async (req, res, next) => {
 
 // Soft delete — keep the record (and its number) for the audit trail.
 // The series sequence is NOT rolled back, so numbers are never reused.
+// The books voucher is removed and any stock taken by the document restored.
 router.delete('/:id', async (req, res, next) => {
   try {
+    const id = Number(req.params.id);
+    const existing = await prisma.invoice.findUnique({ where: { id }, include: { items: true } });
+    if (!existing) return res.status(404).json({ error: 'Invoice not found' });
+    if (existing.status === 'deleted') return res.json({ ok: true, invoice: existing });
+
     const updated = await prisma.invoice.update({
-      where: { id: Number(req.params.id) },
+      where: { id },
       data: { status: 'deleted', edits: { create: { summary: 'Invoice marked as deleted' } } },
     });
+
+    // Reverse the stock effect (invoice deducted → restore; CN restored → re-deduct).
+    const sign = existing.docType === 'credit-note' ? -1 : existing.docType === 'debit-note' ? 0 : 1;
+    if (sign !== 0) {
+      for (const it of existing.items) {
+        if (!it.inventoryItemId || !(Number(it.qty) > 0)) continue;
+        const delta = sign * Number(it.qty);
+        await prisma.inventoryItem.update({ where: { id: it.inventoryItemId }, data: { quantity: { increment: delta } } }).catch(() => {});
+        await prisma.stockMovement.create({
+          data: { itemId: it.inventoryItemId, delta, reason: `${existing.docType === 'credit-note' ? 'Credit note' : 'Invoice'} ${existing.invoiceNo} deleted — stock reversed`, byUsername: req.user?.username || '' },
+        }).catch(() => {});
+      }
+    }
+
+    // Pull the document out of the books.
+    removeInvoiceFromBooks(id).catch((err) => console.error('[accounting] voucher removal failed:', err.message));
+
     res.json({ ok: true, invoice: updated });
   } catch (e) {
     if (e.code === 'P2025') return res.status(404).json({ error: 'Invoice not found' });

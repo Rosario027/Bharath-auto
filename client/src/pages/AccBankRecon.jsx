@@ -13,6 +13,7 @@ export default function AccBankRecon() {
   const [ledgers, setLedgers] = useState([]);
   const [bankLedgerId, setBankLedgerId] = useState('');
   const [importErrors, setImportErrors] = useState(null);
+  const [importSummary, setImportSummary] = useState(null);
   const [txns, setTxns] = useState([]);
   const [txnTab, setTxnTab] = useState('pending');
   const [unpaid, setUnpaid] = useState([]);
@@ -23,24 +24,27 @@ export default function AccBankRecon() {
   const flash = (msg, kind = 'ok') => { setToast({ msg, kind }); setTimeout(() => setToast(null), 3500); };
 
   const loadAll = useCallback(async () => {
-    try {
-      const [l, t, inv, ob] = await Promise.all([
-        api.accLedgers(), api.bankTxns(),
-        api.listInvoices().catch(() => []), api.openBills().catch(() => []),
-      ]);
+    // Each fetch is independent — one failing call must never blank the rest.
+    const [l, t, inv, ob] = await Promise.all([
+      api.accLedgers().catch((e) => { flash(`Ledgers: ${e.message}`, 'err'); return null; }),
+      api.bankTxns().catch((e) => { flash(`Bank transactions: ${e.message}`, 'err'); return null; }),
+      api.listInvoices().catch(() => []),
+      api.openBills().catch(() => []),
+    ]);
+    if (l) {
       setLedgers(l);
       setBankLedgerId((prev) => prev || l.find((x) => x.group?.name === 'Bank Accounts')?.id || '');
-      setTxns(t);
-      setUnpaid(inv.filter((i) => i.docType === 'invoice' && i.status !== 'deleted' && (i.amountPaid || 0) < i.grandTotal - 0.5));
-      setBills(ob);
-    } catch (e) { flash(e.message, 'err'); }
+    }
+    if (t) setTxns(t);
+    setUnpaid(inv.filter((i) => i.docType === 'invoice' && i.status !== 'deleted' && (i.amountPaid || 0) < i.grandTotal - 0.5));
+    setBills(ob);
   }, []);
   useEffect(() => { loadAll(); }, [loadAll]);
 
   const onBankFile = async (file) => {
     if (!file) return;
     if (!bankLedgerId) return flash('Pick the bank ledger first', 'err');
-    setBusy('import'); setImportErrors(null);
+    setBusy('import'); setImportErrors(null); setImportSummary(null);
     try {
       const b64 = await new Promise((resolve, reject) => {
         const r = new FileReader();
@@ -58,8 +62,9 @@ export default function AccBankRecon() {
         if (j.errors) setImportErrors(j.errors);
         flash(j.error || 'Import failed', 'err');
       } else {
-        flash(`Statement imported — ${j.pending} to categorise${j.posted ? `, ${j.posted} posted directly` : ''}`);
-        setTxnTab('pending');
+        setImportSummary({ pending: j.pending, posted: j.posted });
+        flash('Statement imported');
+        setTxnTab(j.pending > 0 ? 'pending' : 'done');
         await loadAll();
       }
     } catch (e) { flash(e.message, 'err'); }
@@ -136,6 +141,14 @@ export default function AccBankRecon() {
           </label>
           <span className="subtle" style={{ fontSize: 12 }}>Rows with a Ledger filled post straight to the books; rows without land below as "to categorise". Indian date formats & comma amounts accepted.</span>
         </div>
+        {importSummary && (
+          <div className="import-summary">
+            ✅ <b>Statement imported.</b>&nbsp;
+            {importSummary.pending > 0 && <span><b>{importSummary.pending}</b> transaction(s) are waiting below — categorise or map each one.&nbsp;</span>}
+            {importSummary.posted > 0 && <span><b>{importSummary.posted}</b> row(s) had a Ledger filled and were posted straight to the books — see the <a onClick={() => setTxnTab('done')} style={{ textDecoration: 'underline', cursor: 'pointer' }}>Reconciled tab</a> and the Day Book.</span>}
+            <button className="btn xs" style={{ marginLeft: 8 }} onClick={() => setImportSummary(null)}>Dismiss</button>
+          </div>
+        )}
         {importErrors && (
           <div className="import-errors">
             <b>File rejected — fix these rows and re-upload:</b>
@@ -154,6 +167,7 @@ export default function AccBankRecon() {
           <div className="fsec-tools">
             <button className={`seg-toggle ${txnTab === 'pending' ? 'on' : ''}`} onClick={() => setTxnTab('pending')}>To Categorise ({pending.length})</button>
             <button className={`seg-toggle ${txnTab === 'done' ? 'on' : ''}`} onClick={() => setTxnTab('done')}>Reconciled ({done.length})</button>
+            <button className="btn xs" onClick={() => loadAll()}>↻ Refresh</button>
           </div>
         </div>
         {txnView.length === 0 ? (
