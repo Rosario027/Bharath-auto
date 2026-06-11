@@ -7,7 +7,7 @@ import PdfPrinter from 'pdfmake/src/printer.js';
 import { prisma } from '../lib/db.js';
 import { authRequired } from '../lib/auth.js';
 import { isValidDate } from '../lib/dates.js';
-import { ensureCoA, ensureDemoBooks, nextVoucherNo, syncAllInvoices, VTYPES } from '../lib/accounting.js';
+import { ensureCoA, ensureDemoBooks, nextVoucherNo, syncAllInvoices, ledgerByName, VTYPES } from '../lib/accounting.js';
 
 const printer = new PdfPrinter({ Helvetica: { normal: 'Helvetica', bold: 'Helvetica-Bold', italics: 'Helvetica-Oblique', bolditalics: 'Helvetica-BoldOblique' } });
 const headStyle = (row) => { row.font = { bold: true, color: { argb: 'FFFFFFFF' } }; row.eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8732B' } }; }); };
@@ -433,9 +433,10 @@ router.get('/bank-template', async (req, res, next) => {
       '3. Debit — amount that went OUT of the bank. Credit — amount that came IN. Numbers only.',
       '4. Fill exactly ONE of Debit / Credit per row — never both, never neither.',
       '5. Description — narration for the entry (e.g. "NEFT rent June").',
-      '6. Ledger — the counter ledger. Copy-paste EXACTLY from the list on the right.',
+      '6. Ledger — OPTIONAL. Copy-paste EXACTLY from the list on the right to post directly,',
+      '   or leave it BLANK to import as "pending" and categorise inside the app later.',
       '7. Money IN  → posted as Receipt:  Dr Bank / Cr Ledger.',
-      '   Money OUT → posted as Payment: Dr Ledger / Cr Bank.',
+      '   Money OUT → posted as Payment: Dr Ledger / Cr Bank. (Cash ledger → Contra.)',
       '8. If anything is invalid the whole file is rejected with row-wise errors — fix and re-upload.',
     ].forEach((t) => info.addRow([t]));
     info.addRow([]);
@@ -517,13 +518,12 @@ router.post('/bank-import', async (req, res, next) => {
         if (debit === 0 && credit === 0) errors.push({ row: rowNo, category: 'No amount', issue: 'Either Debit or Credit must have a value' });
       }
 
-      // Ledger
+      // Ledger — optional. Blank → pending categorization in the app.
       const lname = String(vals[4] ?? '').trim();
       let ledger = null;
-      if (!lname) errors.push({ row: rowNo, category: 'Missing ledger', issue: 'Ledger column is empty — copy a name from the "How to Fill" sheet' });
-      else {
+      if (lname) {
         ledger = byName.get(lname.toLowerCase());
-        if (!ledger) errors.push({ row: rowNo, category: 'Ledger not found', issue: `"${lname}" does not exist — copy exactly from the ledger list` });
+        if (!ledger) errors.push({ row: rowNo, category: 'Ledger not found', issue: `"${lname}" does not exist — copy exactly from the ledger list, or leave blank to categorise later` });
         else if (ledger.id === bank.id) errors.push({ row: rowNo, category: 'Invalid ledger', issue: 'Counter ledger cannot be the bank ledger itself' });
       }
 
@@ -533,28 +533,134 @@ router.post('/bank-import', async (req, res, next) => {
     if (rows.length === 0 && errors.length === 0) return res.status(400).json({ error: 'No data rows found in "Bank Entries".' });
     if (errors.length) return res.status(400).json({ error: `File rejected — ${errors.length} issue(s) found. Fix and re-upload.`, errors });
 
-    let posted = 0;
+    let posted = 0, pending = 0;
     for (const r of rows) {
-      const isIn = r.credit > 0; // money into bank
-      const amount = isIn ? r.credit : r.debit;
-      const vtype = isIn ? 'receipt' : 'payment';
-      await prisma.$transaction(async (tx) => tx.accVoucher.create({
-        data: {
-          voucherNo: await nextVoucherNo(tx, vtype),
-          vtype, date: r.date,
-          narration: r.desc || `Bank import (${bank.name})`,
-          refNo: 'BANK-IMPORT',
-          createdBy: req.user.username,
-          lines: {
-            create: isIn
-              ? [{ ledgerId: bank.id, debit: amount, credit: 0, sortOrder: 0 }, { ledgerId: r.ledger.id, debit: 0, credit: amount, sortOrder: 1 }]
-              : [{ ledgerId: r.ledger.id, debit: amount, credit: 0, sortOrder: 0 }, { ledgerId: bank.id, debit: 0, credit: amount, sortOrder: 1 }],
-          },
-        },
-      }));
-      posted++;
+      if (r.ledger) {
+        const voucher = await postBankVoucher(bank, r.ledger, r, req.user.username, 'BANK-IMPORT');
+        await prisma.bankTxn.create({
+          data: { bankLedgerId: bank.id, date: r.date, description: r.desc, debit: r.debit, credit: r.credit, status: 'categorized', voucherId: voucher.id, categorizedAs: r.ledger.name, byUsername: req.user.username },
+        });
+        posted++;
+      } else {
+        await prisma.bankTxn.create({
+          data: { bankLedgerId: bank.id, date: r.date, description: r.desc, debit: r.debit, credit: r.credit, byUsername: req.user.username },
+        });
+        pending++;
+      }
     }
-    res.json({ ok: true, posted });
+    res.json({ ok: true, posted, pending });
+  } catch (e) { next(e); }
+});
+
+// Post one bank transaction against a counter ledger.
+// Receipt (money in) / Payment (money out) — or Contra when the counter
+// ledger is itself Cash/Bank (e.g. cash withdrawn → Cash-in-Hand rises).
+async function postBankVoucher(bank, ledger, r, username, refNo) {
+  const isIn = r.credit > 0;
+  const amount = isIn ? r.credit : r.debit;
+  const group = await prisma.accGroup.findUnique({ where: { id: ledger.groupId } });
+  const isCashBank = ['Cash-in-Hand', 'Bank Accounts'].includes(group?.name);
+  const vtype = isCashBank ? 'contra' : isIn ? 'receipt' : 'payment';
+  return prisma.$transaction(async (tx) => tx.accVoucher.create({
+    data: {
+      voucherNo: await nextVoucherNo(tx, vtype),
+      vtype, date: r.date,
+      narration: (r.desc ?? r.description) || `Bank ${isIn ? 'receipt' : 'payment'} (${bank.name})`,
+      refNo,
+      createdBy: username,
+      lines: {
+        create: isIn
+          ? [{ ledgerId: bank.id, debit: amount, credit: 0, sortOrder: 0 }, { ledgerId: ledger.id, debit: 0, credit: amount, sortOrder: 1 }]
+          : [{ ledgerId: ledger.id, debit: amount, credit: 0, sortOrder: 0 }, { ledgerId: bank.id, debit: 0, credit: amount, sortOrder: 1 }],
+      },
+    },
+  }));
+}
+
+// ── Bank transaction categorization ──
+router.get('/bank-txns', async (req, res, next) => {
+  try {
+    const where = req.query.status ? { status: req.query.status } : {};
+    const txns = await prisma.bankTxn.findMany({ where, orderBy: [{ status: 'desc' }, { date: 'desc' }, { id: 'desc' }], take: 300 });
+    const banks = await prisma.accLedger.findMany({ where: { id: { in: [...new Set(txns.map((t) => t.bankLedgerId))] } }, select: { id: true, name: true } });
+    const bname = new Map(banks.map((b) => [b.id, b.name]));
+    res.json(txns.map((t) => ({ ...t, bankName: bname.get(t.bankLedgerId) || '' })));
+  } catch (e) { next(e); }
+});
+
+// Categorize to a ledger (or park in "To Be Verified" suspense).
+router.post('/bank-txns/:id/categorize', async (req, res, next) => {
+  try {
+    const txn = await prisma.bankTxn.findUnique({ where: { id: Number(req.params.id) } });
+    if (!txn) return res.status(404).json({ error: 'Transaction not found' });
+    if (txn.status !== 'pending') return res.status(400).json({ error: 'Already categorized' });
+    const bank = await prisma.accLedger.findUnique({ where: { id: txn.bankLedgerId } });
+    let ledger;
+    if (req.body?.toSuspense) ledger = await ledgerByName(prisma, 'To Be Verified', 'Suspense A/c');
+    else {
+      ledger = await prisma.accLedger.findUnique({ where: { id: Number(req.body?.ledgerId) || 0 } });
+      if (!ledger) return res.status(400).json({ error: 'Pick a ledger' });
+      if (ledger.id === bank.id) return res.status(400).json({ error: 'Cannot categorize against the same bank ledger' });
+    }
+    const voucher = await postBankVoucher(bank, ledger, txn, req.user.username, 'BANK-CAT');
+    const updated = await prisma.bankTxn.update({
+      where: { id: txn.id },
+      data: { status: 'categorized', voucherId: voucher.id, categorizedAs: ledger.name },
+    });
+    res.json(updated);
+  } catch (e) { next(e); }
+});
+
+// Map a money-in transaction to a sales invoice (AR settlement).
+// Excess over the invoice's outstanding is parked in "To Be Verified".
+router.post('/bank-txns/:id/map-invoice', async (req, res, next) => {
+  try {
+    const txn = await prisma.bankTxn.findUnique({ where: { id: Number(req.params.id) } });
+    if (!txn) return res.status(404).json({ error: 'Transaction not found' });
+    if (txn.status !== 'pending') return res.status(400).json({ error: 'Already categorized' });
+    if (!(txn.credit > 0)) return res.status(400).json({ error: 'Only money-in transactions can be mapped to invoices' });
+    const invoice = await prisma.invoice.findUnique({ where: { id: Number(req.body?.invoiceId) || 0 } });
+    if (!invoice || invoice.status === 'deleted' || invoice.docType !== 'invoice') return res.status(400).json({ error: 'Pick a valid sales invoice' });
+
+    const outstanding = r2(invoice.grandTotal - (invoice.amountPaid || 0));
+    if (outstanding <= 0) return res.status(400).json({ error: 'That invoice is already fully paid' });
+    const applied = Math.min(txn.credit, outstanding);
+    const excess = r2(txn.credit - applied);
+
+    const bank = await prisma.accLedger.findUnique({ where: { id: txn.bankLedgerId } });
+    const customer = await ledgerByName(prisma, invoice.buyerName || 'Cash Customer', 'Sundry Debtors');
+    const suspense = excess > 0 ? await ledgerByName(prisma, 'To Be Verified', 'Suspense A/c') : null;
+
+    const voucher = await prisma.$transaction(async (tx) => {
+      const lines = [
+        { ledgerId: bank.id, debit: txn.credit, credit: 0, sortOrder: 0 },
+        { ledgerId: customer.id, debit: 0, credit: applied, sortOrder: 1 },
+      ];
+      if (suspense) lines.push({ ledgerId: suspense.id, debit: 0, credit: excess, sortOrder: 2 });
+      const v = await tx.accVoucher.create({
+        data: {
+          voucherNo: await nextVoucherNo(tx, 'receipt'),
+          vtype: 'receipt', date: txn.date,
+          narration: `${txn.description || 'Bank receipt'} — settled against ${invoice.invoiceNo}${excess > 0 ? ` (excess ₹${excess} parked in To Be Verified)` : ''}`,
+          refNo: invoice.invoiceNo,
+          createdBy: req.user.username,
+          lines: { create: lines },
+        },
+      });
+      await tx.invoice.update({ where: { id: invoice.id }, data: { amountPaid: r2((invoice.amountPaid || 0) + applied) } });
+      return v;
+    });
+
+    const updated = await prisma.bankTxn.update({
+      where: { id: txn.id },
+      data: {
+        status: excess > 0 ? 'partial' : 'categorized',
+        voucherId: voucher.id,
+        invoiceId: invoice.id,
+        categorizedAs: `Invoice ${invoice.invoiceNo}${excess > 0 ? ' + To Be Verified' : ''}`,
+      },
+    });
+    res.json({ ...updated, applied, excess });
   } catch (e) { next(e); }
 });
 

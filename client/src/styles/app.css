@@ -163,6 +163,21 @@ body {
 .salary-box b { font-size: 15px; }
 .salary-box .sal-total b { font-size: 19px; color: var(--brand-green); }
 
+/* prominent logout */
+.btn-logout { display: inline-flex; align-items: center; gap: 6px; background: #c0392b; border: none; color: #fff; font-weight: 800; font-size: 13px; padding: 8px 16px; border-radius: 9px; cursor: pointer; box-shadow: 0 2px 8px rgba(192,57,43,.4); }
+.btn-logout:hover { background: #a93226; }
+
+/* permissions editor */
+.perm-grid { display: flex; flex-direction: column; gap: 8px; }
+.perm-row { display: grid; grid-template-columns: 140px auto auto auto; gap: 8px; align-items: center; }
+.perm-name { font-weight: 700; font-size: 13px; }
+
+/* attendance day detail */
+.day-detail { margin-top: 12px; border: 1px solid var(--line); border-left: 4px solid var(--brand-orange); border-radius: 10px; padding: 12px 14px; background: #fcfcfd; }
+.att-day { border: none; cursor: pointer; font-family: inherit; }
+.att-day.pad { cursor: default; }
+.att-day.requested { outline: 2px dashed #e8a13b; outline-offset: -2px; }
+
 /* ── Accounting KPIs / general dashboard ── */
 .acc-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 .acc-kpi { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; border: 1px solid var(--line); border-radius: 11px; padding: 12px 14px; background: #fcfcfd; cursor: pointer; text-align: left; transition: .15s; }

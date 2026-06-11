@@ -20,7 +20,7 @@ export async function ensureUsers() {
 // any 'user'-role account that doesn't have one yet (covers User/User123 and
 // any account created before this rule existed). Admin can fill in details later.
 export async function ensureStaffProfiles() {
-  const unlinked = await prisma.user.findMany({ where: { role: 'user', employee: null } });
+  const unlinked = await prisma.user.findMany({ where: { role: { in: ['user', 'staff'] }, employee: null } });
   for (const u of unlinked) {
     await prisma.employee.create({ data: { name: u.username, userId: u.id } });
     console.log(`[seed] Staff profile created for login "${u.username}".`);

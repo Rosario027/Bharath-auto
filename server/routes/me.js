@@ -112,6 +112,48 @@ router.post('/full-day', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// ── Attendance day detail + missed-day update requests ──
+router.get('/attendance/:date', async (req, res, next) => {
+  try {
+    const emp = await myEmployee(req, res);
+    if (!emp) return;
+    const date = req.params.date;
+    if (!isValidDate(date)) return res.status(400).json({ error: 'Invalid date' });
+    const [record, request] = await Promise.all([
+      prisma.attendance.findUnique({ where: { employeeId_date: { employeeId: emp.id, date } } }),
+      prisma.attendanceRequest.findUnique({ where: { employeeId_date: { employeeId: emp.id, date } } }),
+    ]);
+    res.json({ date, record, request });
+  } catch (e) { next(e); }
+});
+
+router.get('/attendance-requests', async (req, res, next) => {
+  try {
+    const emp = await myEmployee(req, res);
+    if (!emp) return;
+    res.json(await prisma.attendanceRequest.findMany({ where: { employeeId: emp.id }, orderBy: { createdAt: 'desc' } }));
+  } catch (e) { next(e); }
+});
+
+router.post('/attendance-requests', async (req, res, next) => {
+  try {
+    const emp = await myEmployee(req, res);
+    if (!emp) return;
+    const { date, workSummary } = req.body || {};
+    if (!isValidDate(date)) return res.status(400).json({ error: 'Pick a valid date' });
+    if (date > localDate()) return res.status(400).json({ error: 'Cannot request attendance for a future date' });
+    if (!(workSummary || '').trim()) return res.status(400).json({ error: 'Describe the work you did that day' });
+    const existing = await prisma.attendance.findUnique({ where: { employeeId_date: { employeeId: emp.id, date } } });
+    if (existing?.present) return res.status(400).json({ error: 'You are already marked present on that day' });
+    const reqRow = await prisma.attendanceRequest.upsert({
+      where: { employeeId_date: { employeeId: emp.id, date } },
+      create: { employeeId: emp.id, date, workSummary: workSummary.trim() },
+      update: { workSummary: workSummary.trim(), status: 'pending', adminComment: '' },
+    });
+    res.status(201).json(reqRow);
+  } catch (e) { next(e); }
+});
+
 // ── Leave requests ──
 router.get('/leaves', async (req, res, next) => {
   try {

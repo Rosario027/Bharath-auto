@@ -55,6 +55,35 @@ export async function changePassword(username, currentPassword, newPassword) {
 
 export const IDLE_MS = 60 * 60 * 1000; // auto-logout after 60 min of inactivity
 
+// ── Module permissions ──────────────────────────────────────────
+// Each non-admin user carries perms JSON {module: 'none'|'user'|'full'}.
+// 'user'  = restricted: only their own data (where the module supports it).
+// 'full'  = admin-like visibility & actions inside that module.
+export const MODULES = ['invoice', 'accounting', 'clients', 'siteVisits', 'inventory', 'reports'];
+export const DEFAULT_PERMS = {
+  user:  { invoice: 'full', accounting: 'full', clients: 'none', siteVisits: 'user', inventory: 'full', reports: 'full' },  // accountant
+  staff: { invoice: 'none', accounting: 'none', clients: 'none', siteVisits: 'user', inventory: 'none', reports: 'none' },
+};
+
+export function resolvePerms(user) {
+  if (!user) return {};
+  if (user.role === 'admin') return Object.fromEntries(MODULES.map((m) => [m, 'full']));
+  let stored = {};
+  try { stored = user.perms ? JSON.parse(user.perms) : {}; } catch { /* ignore */ }
+  return { ...(DEFAULT_PERMS[user.role] || DEFAULT_PERMS.user), ...stored };
+}
+
+// Gate a router: blocks users whose access to `mod` is 'none'
+// (or below `min` — pass 'full' for admin-like sections).
+export function requireMod(mod, min = 'user') {
+  return (req, res, next) => {
+    const level = req.user?.perms?.[mod] || 'none';
+    const ok = min === 'full' ? level === 'full' : level !== 'none';
+    if (!ok) return res.status(403).json({ error: 'You do not have access to this module.' });
+    next();
+  };
+}
+
 export async function authenticate(username, password, meta = {}) {
   const user = await prisma.user.findUnique({
     where: { username: (username || '').trim() },
@@ -73,6 +102,7 @@ export async function authenticate(username, password, meta = {}) {
     user: {
       username: user.username,
       role: user.role,
+      perms: resolvePerms(user),
       employeeId: user.employee?.id ?? null,
       employeeName: user.employee?.name ?? null,
     },
@@ -106,7 +136,9 @@ export function authRequired(req, res, next) {
     if (Date.now() - new Date(session.lastSeen).getTime() > 60 * 1000) {
       await prisma.session.update({ where: { sid: payload.sid }, data: { lastSeen: new Date() } });
     }
-    req.user = { username: payload.u, role: payload.role };
+    const dbUser = await prisma.user.findUnique({ where: { username: payload.u }, select: { role: true, perms: true } });
+    if (!dbUser) return res.status(401).json({ error: 'Account no longer exists.' });
+    req.user = { username: payload.u, role: dbUser.role, perms: resolvePerms({ role: dbUser.role, perms: dbUser.perms }) };
     req.sid = payload.sid;
     next();
   })().catch(next);

@@ -9,7 +9,8 @@ const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${Stri
 
 const TASK_LABELS = { assigned: 'Yet to be taken', processing: 'Processing', completed: 'Completed' };
 
-function Calendar({ month, records, onPrev, onNext }) {
+function Calendar({ month, records, requests = [], onPrev, onNext, onDay }) {
+  const reqDays = new Set(requests.filter((r) => r.date.slice(0, 7) === month).map((r) => Number(r.date.slice(8))));
   const presentDays = useMemo(() => new Set(records.filter((r) => r.present).map((r) => Number(r.date.slice(8)))), [records]);
   const first = new Date(`${month}-01T00:00:00`);
   const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
@@ -29,12 +30,14 @@ function Calendar({ month, records, onPrev, onNext }) {
       <div className="att-grid">
         {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => <span key={i} className="att-dow">{d}</span>)}
         {cells.map((d, i) => (
-          <span key={i} className={`att-day ${d == null ? 'pad' : ''} ${d != null && presentDays.has(d) ? 'present' : ''} ${isThisMonth && d === todayDay ? 'today' : ''}`}>
+          <button key={i} disabled={d == null}
+            onClick={() => d != null && onDay && onDay(`${month}-${String(d).padStart(2, '0')}`)}
+            className={`att-day ${d == null ? 'pad' : ''} ${d != null && presentDays.has(d) ? 'present' : ''} ${isThisMonth && d === todayDay ? 'today' : ''} ${d != null && reqDays.has(d) ? 'requested' : ''}`}>
             {d || ''}
-          </span>
+          </button>
         ))}
       </div>
-      <div className="att-legend"><span className="dot present" /> Present · {presentDays.size} day(s) this month</div>
+      <div className="att-legend"><span className="dot present" /> Present · {presentDays.size} day(s) this month · <span className="dot" style={{ background: '#e8a13b' }} /> update requested · click a date for details</div>
     </div>
   );
 }
@@ -44,6 +47,9 @@ export default function StaffHome() {
   const [profile, setProfile] = useState(null);
   const [month, setMonth] = useState(todayStr().slice(0, 7));
   const [attendance, setAttendance] = useState([]);
+  const [attReqs, setAttReqs] = useState([]);
+  const [dayDetail, setDayDetail] = useState(null);
+  const [reqSummary, setReqSummary] = useState('');
   const [tasks, setTasks] = useState([]);
   const [leaves, setLeaves] = useState([]);
   const [expenses, setExpenses] = useState([]);
@@ -58,8 +64,8 @@ export default function StaffHome() {
 
   const loadAll = useCallback(async () => {
     try {
-      const [p, t, l, x] = await Promise.all([api.getMyProfile(), api.myTasks(), api.myLeaves(), api.myExpenses()]);
-      setProfile(p); setTasks(t); setLeaves(l); setExpenses(x);
+      const [p, t, l, x, ar] = await Promise.all([api.getMyProfile(), api.myTasks(), api.myLeaves(), api.myExpenses(), api.myAttendanceRequests().catch(() => [])]);
+      setProfile(p); setTasks(t); setLeaves(l); setExpenses(x); setAttReqs(ar);
     } catch (e) { flash(e.message, 'err'); }
   }, []);
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -134,6 +140,20 @@ export default function StaffHome() {
   };
   const editTask = (id, patch) => setTaskEdits((p) => ({ ...p, [id]: { ...(p[id] || {}), ...patch } }));
 
+  const openDay = async (date) => {
+    try { setReqSummary(''); setDayDetail(await api.myAttendanceDay(date)); }
+    catch (e) { flash(e.message, 'err'); }
+  };
+  const submitAttReq = async () => {
+    if (!reqSummary.trim()) return flash('Describe the work you did that day', 'err');
+    try {
+      await api.requestAttendance(dayDetail.date, reqSummary.trim());
+      setAttReqs(await api.myAttendanceRequests());
+      await openDay(dayDetail.date);
+      flash('Request sent to admin for approval');
+    } catch (e) { flash(e.message, 'err'); }
+  };
+
   const newTasks = tasks.filter((t) => t.status === 'assigned').length;
 
   return (
@@ -186,7 +206,39 @@ export default function StaffHome() {
         {/* ── Calendar ── */}
         <section className="fsec">
           <h3>My Attendance Calendar</h3>
-          <Calendar month={month} records={attendance} onPrev={() => shiftMonth(-1)} onNext={() => shiftMonth(1)} />
+          <Calendar month={month} records={attendance} requests={attReqs} onPrev={() => shiftMonth(-1)} onNext={() => shiftMonth(1)} onDay={openDay} />
+          {dayDetail && (
+            <div className="day-detail">
+              <div className="fsec-head" style={{ marginBottom: 6 }}>
+                <b>{fmtDate(dayDetail.date)}</b>
+                <button className="btn xs" onClick={() => setDayDetail(null)}>Close</button>
+              </div>
+              {dayDetail.record?.present ? (
+                <>
+                  <span className="badge rq-approved">Present{dayDetail.record.manual ? ' (full day)' : ''}</span>
+                  <div className="subtle" style={{ fontSize: 12, marginTop: 6 }}>
+                    In: {fmtTime(dayDetail.record.clockIn)} · Out: {fmtTime(dayDetail.record.clockOut)}
+                  </div>
+                  {dayDetail.record.workSummary && <div style={{ fontSize: 13, marginTop: 6 }}>📝 {dayDetail.record.workSummary}</div>}
+                </>
+              ) : (
+                <>
+                  <span className="badge rq-rejected">Absent / not marked</span>
+                  {dayDetail.request ? (
+                    <div style={{ marginTop: 8 }}>
+                      <span className={`badge rq-${dayDetail.request.status}`}>update {dayDetail.request.status}</span>
+                      <div className="subtle" style={{ fontSize: 12, marginTop: 4 }}>📝 {dayDetail.request.workSummary}{dayDetail.request.adminComment ? ` · Admin: ${dayDetail.request.adminComment}` : ''}</div>
+                    </div>
+                  ) : dayDetail.date <= todayStr() ? (
+                    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <textarea rows={2} placeholder="Missed marking? Describe the work you did that day…" value={reqSummary} onChange={(e) => setReqSummary(e.target.value)} />
+                      <button className="btn xs primary" onClick={submitAttReq}>Request attendance update</button>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
+          )}
         </section>
       </div>
 

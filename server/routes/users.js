@@ -10,29 +10,54 @@ router.use(adminRequired);
 router.get('/', async (req, res, next) => {
   try {
     await ensureUsers();
-    const users = await prisma.user.findMany({ orderBy: { id: 'asc' }, select: { id: true, username: true, role: true, createdAt: true } });
+    const users = await prisma.user.findMany({ orderBy: { id: 'asc' }, select: { id: true, username: true, role: true, perms: true, createdAt: true } });
     res.json(users);
   } catch (e) { next(e); }
 });
 
+function cleanPerms(p) {
+  if (!p || typeof p !== 'object') return '';
+  const out = {};
+  for (const [k, v] of Object.entries(p)) if (['none', 'user', 'full'].includes(v)) out[k] = v;
+  return JSON.stringify(out);
+}
+
 router.post('/', async (req, res, next) => {
   try {
-    const { username, password, role } = req.body || {};
+    const { username, password, role, perms } = req.body || {};
     if (!(username || '').trim() || !(password || '').trim()) return res.status(400).json({ error: 'Username and password are required' });
-    const finalRole = role === 'admin' ? 'admin' : 'user';
+    const finalRole = ['admin', 'user', 'staff'].includes(role) ? role : 'user';
     const user = await prisma.$transaction(async (tx) => {
       const u = await tx.user.create({
-        data: { username: username.trim(), role: finalRole, passHash: hashPassword(password) },
-        select: { id: true, username: true, role: true },
+        data: { username: username.trim(), role: finalRole, perms: cleanPerms(perms), passHash: hashPassword(password) },
+        select: { id: true, username: true, role: true, perms: true },
       });
-      // Every staff/accountant login gets an employee file so attendance,
+      // Every non-admin login gets an employee file so attendance,
       // leaves, expenses and tasks work out of the box.
-      if (finalRole === 'user') await tx.employee.create({ data: { name: u.username, userId: u.id } });
+      if (finalRole !== 'admin') await tx.employee.create({ data: { name: u.username, userId: u.id } });
       return u;
     });
     res.status(201).json(user);
   } catch (e) {
     if (e.code === 'P2002') return res.status(409).json({ error: 'That user ID already exists' });
+    next(e);
+  }
+});
+
+// Update a user's role / module permissions.
+router.put('/:id', async (req, res, next) => {
+  try {
+    const { role, perms } = req.body || {};
+    const data = {};
+    if (role !== undefined) {
+      if (!['admin', 'user', 'staff'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+      data.role = role;
+    }
+    if (perms !== undefined) data.perms = cleanPerms(perms);
+    const u = await prisma.user.update({ where: { id: Number(req.params.id) }, data, select: { id: true, username: true, role: true, perms: true } });
+    res.json(u);
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ error: 'User not found' });
     next(e);
   }
 });

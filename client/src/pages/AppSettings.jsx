@@ -1,6 +1,20 @@
 import { useEffect, useState } from 'react';
-import { api } from '../api.js';
+import { api, exporter } from '../api.js';
 import { useSettings, useAuth } from '../App.jsx';
+
+const MODULES = [
+  ['invoice', 'Invoicing'], ['accounting', 'Accounting'], ['clients', 'Clients'],
+  ['siteVisits', 'Site Visits'], ['inventory', 'Inventory'], ['reports', 'Reports'],
+];
+const ROLE_DEFAULTS = {
+  user: { invoice: 'full', accounting: 'full', clients: 'none', siteVisits: 'user', inventory: 'full', reports: 'full' },
+  staff: { invoice: 'none', accounting: 'none', clients: 'none', siteVisits: 'user', inventory: 'none', reports: 'none' },
+};
+const parsePerms = (u) => {
+  let p = {};
+  try { p = u.perms ? JSON.parse(u.perms) : {}; } catch { /* ignore */ }
+  return { ...(ROLE_DEFAULTS[u.role] || ROLE_DEFAULTS.user), ...p };
+};
 
 export default function AppSettings() {
   const { settings, setSettings } = useSettings();
@@ -18,10 +32,14 @@ export default function AppSettings() {
   const [quotes, setQuotes] = useState([]);
   const [schedule, setSchedule] = useState([]);
   const loadQuotes = () => api.listLoginQuotes().then((r) => { setQuotes(r.quotes); setSchedule(r.schedule); }).catch(() => {});
-  // Users + sessions
+  // Users + sessions + perms
   const [users, setUsers] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [newUser, setNewUser] = useState({ username: '', password: '', role: 'user' });
+  const [permsFor, setPermsFor] = useState(null); // user being edited
+  const [permDraft, setPermDraft] = useState({});
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [backupBusy, setBackupBusy] = useState(false);
   const loadUsers = () => api.listUsers().then(setUsers).catch(() => {});
   const loadSessions = () => api.listSessions().then(setSessions).catch(() => {});
 
@@ -69,12 +87,25 @@ export default function AppSettings() {
         <button className="btn primary" onClick={saveAll} disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
       </header>
 
+      {/* ── Data backup ── */}
+      <section className="fsec">
+        <div className="fsec-head">
+          <h3>Data Backup <span className="hint">periodical full export</span></h3>
+          <button className="btn primary" disabled={backupBusy} onClick={async () => { setBackupBusy(true); try { await exporter.fullBackup(); flash('Backup downloaded'); } catch (e) { flash(e.message, 'err'); } finally { setBackupBusy(false); } }}>
+            {backupBusy ? 'Preparing ZIP…' : '⬇ Download full backup (ZIP)'}
+          </button>
+        </div>
+        <p className="subtle" style={{ fontSize: 12 }}>One ZIP with Excel files of every dataset — invoices, credit/debit notes, clients, staff, attendance, leaves, expenses, tasks, site visits, inventory, all journal entries & ledgers, edit logs, fixed assets, users — plus PDF copies of every invoice/CN/DN. Download periodically and store safely.</p>
+      </section>
+
       {/* ── Website data ── */}
       <section className="fsec">
         <div className="fsec-head">
-          <h3>Login Screen · About</h3>
-          <button className="btn xs" onClick={addQuote}>+ Add quote</button>
+          <h3 style={{ cursor: 'pointer' }} onClick={() => setLoginOpen((v) => !v)}>Login Screen · About <span className="hint">{loginOpen ? '▲ collapse' : '▼ expand'}</span></h3>
+          {loginOpen && <button className="btn xs" onClick={addQuote}>+ Add quote</button>}
         </div>
+        {!loginOpen ? <p className="subtle" style={{ fontSize: 12, margin: 0 }}>Thirukkural rotation, heading & static note — click to expand.</p> : (
+        <div>
         <p className="subtle" style={{ fontSize: 12, marginTop: 0 }}>Quotes (Thirukkural) rotate automatically — one per day, same for everyone. Changes reflect on every user's login screen.</p>
         <div className="grid2">
           <label>Heading<input value={form.loginHeading} onChange={(e) => setForm({ ...form, loginHeading: e.target.value })} /></label>
@@ -106,6 +137,8 @@ export default function AppSettings() {
             ))}
           </div>
         )}
+        </div>
+        )}
       </section>
 
       {/* ── User management ── */}
@@ -120,6 +153,7 @@ export default function AppSettings() {
                 <td><span className={`badge`} style={{ background: u.role === 'admin' ? '#fef3ec' : '#e7f6ec', color: u.role === 'admin' ? '#b9651a' : '#1f8f4e' }}>{u.role}</span></td>
                 <td className="r">
                   <div className="row-actions">
+                    {u.role !== 'admin' && <button className="btn xs" onClick={() => { setPermsFor(u); setPermDraft(parsePerms(u)); }}>Permissions</button>}
                     <button className="btn xs" onClick={() => resetPw(u)}>Reset password</button>
                     <button className="btn xs danger" onClick={() => removeUser(u)}>✕</button>
                   </div>
@@ -133,13 +167,45 @@ export default function AppSettings() {
           <label>Password<input value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} /></label>
           <label>Role
             <select value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}>
-              <option value="user">User + Accountant (staff portal, invoicing, inventory, reports)</option>
+              <option value="user">User + Accountant (invoicing, accounting, inventory, reports)</option>
+              <option value="staff">Staff (own portal + site visits only)</option>
               <option value="admin">Admin (full access)</option>
             </select>
           </label>
           <div style={{ display: 'flex', alignItems: 'flex-end' }}><button className="btn" onClick={addUser}>+ Add user</button></div>
         </div>
-        <p className="subtle" style={{ fontSize: 12 }}>New User+Accountant logins automatically get a staff file, so attendance, leaves, expenses and tasks work immediately.</p>
+        <p className="subtle" style={{ fontSize: 12 }}>Non-admin logins automatically get a staff file (attendance, leaves, expenses, tasks). Use <b>Permissions</b> on each user to grant per-module access: <b>None</b> (hidden) · <b>User</b> (own data only) · <b>Full</b> (admin-like inside that module).</p>
+
+        {permsFor && (
+          <div className="fsec" style={{ borderLeft: '4px solid var(--brand-orange)', marginTop: 10 }}>
+            <div className="fsec-head">
+              <h3>Module Permissions · {permsFor.username} <span className="hint">{permsFor.role}</span></h3>
+              <button className="btn xs" onClick={() => setPermsFor(null)}>Close</button>
+            </div>
+            <div className="perm-grid">
+              {MODULES.map(([key, label]) => (
+                <div className="perm-row" key={key}>
+                  <span className="perm-name">{label}</span>
+                  {['none', 'user', 'full'].map((lvl) => (
+                    <button key={lvl}
+                      className={`seg-toggle ${permDraft[key] === lvl ? 'on' : ''}`}
+                      title={lvl === 'none' ? 'Hidden completely' : lvl === 'user' ? 'Own data only' : 'Admin-like full access'}
+                      onClick={() => setPermDraft((p) => ({ ...p, [key]: lvl }))}>
+                      {lvl === 'none' ? 'None' : lvl === 'user' ? 'User' : 'Full'}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+              <button className="btn primary" onClick={async () => {
+                try { await api.updateUser(permsFor.id, { perms: permDraft }); await loadUsers(); setPermsFor(null); flash('Permissions saved — applies on their next request'); }
+                catch (e) { flash(e.message, 'err'); }
+              }}>Save permissions</button>
+              <span className="subtle" style={{ fontSize: 12, alignSelf: 'center' }}>e.g. give one employee Site Visits "User" — they see only visits/tasks assigned to them, fully isolated from admin data.</span>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* ── Active sessions ── */}

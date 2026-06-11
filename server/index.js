@@ -22,7 +22,8 @@ import inventoryRouter from './routes/inventory.js';
 import reportsRouter from './routes/reports.js';
 import accountingRouter from './routes/accounting.js';
 import overviewRouter from './routes/overview.js';
-import { authRequired, adminRequired } from './lib/auth.js';
+import backupRouter from './routes/backup.js';
+import { authRequired, adminRequired, requireMod } from './lib/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -39,16 +40,24 @@ app.use('/api/users', usersRouter);                        // admin-only (guarde
 app.use('/api/employees', employeesRouter);                // admin-only (guarded in router)
 app.use('/api/me', meRouter);                              // staff self-service (own data only)
 app.use('/api/staff-admin', staffAdminRouter);             // admin-only (guarded in router)
-app.use('/api/site-visits', siteVisitsRouter);             // staff: own visits; admin: all
-app.use('/api/inventory', inventoryRouter);                // admin + accountant/staff
-app.use('/api/reports', reportsRouter);                    // admin + accountant/staff (Excel)
-app.use('/api/accounting', accountingRouter);              // books: admin + accountant
+app.use('/api/site-visits', authRequired, requireMod('siteVisits'), siteVisitsRouter); // own ('user') vs all ('full')
+app.use('/api/inventory', requireModWrap('inventory', inventoryRouter));
+app.use('/api/reports', requireModWrap('reports', reportsRouter));
+app.use('/api/accounting', requireModWrap('accounting', accountingRouter));
 app.use('/api/overview', overviewRouter);                  // general admin dashboard
-app.use('/api/settings', authRequired, settingsRouter);   // GET both; PUT admin-only (guarded in router)
-app.use('/api/invoices', authRequired, invoicesRouter);   // both roles can raise invoices
-app.use('/api/customers', adminRequired, customersRouter); // client data — admin only
-app.use('/api/export', authRequired, exportRouter);
-app.use('/api/series', authRequired, seriesRouter);        // GET both; mutations admin-only (guarded in router)
+app.use('/api/backup', backupRouter);                      // full data backup (admin)
+
+// Routers below carry their own authRequired; wrap to add the module gate after it.
+function requireModWrap(mod, router) {
+  const r = express.Router();
+  r.use(authRequired, requireMod(mod), router);
+  return r;
+}
+app.use('/api/settings', authRequired, settingsRouter);   // GET all; PUT admin-only (guarded in router)
+app.use('/api/invoices', authRequired, requireMod('invoice'), invoicesRouter);
+app.use('/api/customers', authRequired, requireMod('clients', 'full'), customersRouter); // client data — admin or full grant
+app.use('/api/export', authRequired, requireMod('invoice'), exportRouter);
+app.use('/api/series', authRequired, requireMod('invoice'), seriesRouter);
 
 // ── Serve the built client (single Railway service) ──
 const clientDist = path.resolve(__dirname, '../client/dist');

@@ -71,10 +71,41 @@ model CompanySettings {
 model User {
   id        Int       @id @default(autoincrement())
   username  String    @unique
-  role      String    @default("user") // admin | user
+  role      String    @default("user") // admin | user (accountant) | staff
+  perms     String    @default("") // JSON {module: 'none'|'user'|'full'} — admin grants per-module access
   passHash  String
   createdAt DateTime  @default(now())
   employee  Employee?
+}
+
+// Bank transactions awaiting / done with categorization (AR-AP mapping).
+model BankTxn {
+  id            Int      @id @default(autoincrement())
+  bankLedgerId  Int
+  date          String
+  description   String   @default("")
+  debit         Float    @default(0) // out of bank
+  credit        Float    @default(0) // into bank
+  status        String   @default("pending") // pending | categorized | partial (excess parked in To Be Verified)
+  voucherId     Int?
+  categorizedAs String   @default("")
+  invoiceId     Int?
+  byUsername    String   @default("")
+  createdAt     DateTime @default(now())
+}
+
+// Staff request to add/fix attendance for a missed day — admin approves.
+model AttendanceRequest {
+  id           Int      @id @default(autoincrement())
+  employeeId   Int
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date         String   // yyyy-mm-dd
+  workSummary  String   @default("")
+  status       String   @default("pending") // pending | approved | rejected
+  adminComment String   @default("")
+  createdAt    DateTime @default(now())
+
+  @@unique([employeeId, date])
 }
 
 // Staff / employee files
@@ -115,6 +146,7 @@ model Employee {
   expenses        ExpenseClaim[]
   tasks           StaffTask[]
   siteVisits      SiteVisit[]
+  attendanceRequests AttendanceRequest[]
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -471,6 +503,7 @@ model Invoice {
   // Presentation
   theme  String  @default("orange")
   notes  String  @default("")
+  amountPaid Float @default(0) // settled via bank categorization (AR)
   status String  @default("draft") // draft | finalized | deleted
 
   // Edit tracking

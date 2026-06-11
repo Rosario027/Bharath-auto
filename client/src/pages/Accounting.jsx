@@ -21,6 +21,10 @@ export default function Accounting() {
   const [ledgers, setLedgers] = useState([]);
   const [bankLedgerId, setBankLedgerId] = useState('');
   const [importErrors, setImportErrors] = useState(null);
+  const [txns, setTxns] = useState([]);
+  const [txnTab, setTxnTab] = useState('pending');
+  const [unpaid, setUnpaid] = useState([]);
+  const [catSel, setCatSel] = useState({}); // txnId -> { ledgerId, invoiceId }
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const [toast, setToast] = useState(null);
@@ -75,6 +79,39 @@ export default function Accounting() {
 
   const sortBy = (key) => setSort((s) => ({ key, dir: s.key === key && s.dir === 'desc' ? 'asc' : 'desc' }));
   const arrow = (key) => (sort.key === key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : '');
+
+  // ── Bank transaction categorization ──
+  const loadTxns = useCallback(async () => {
+    try {
+      const [t, inv] = await Promise.all([api.bankTxns(), api.listInvoices().catch(() => [])]);
+      setTxns(t);
+      setUnpaid(inv.filter((i) => i.docType === 'invoice' && i.status !== 'deleted' && (i.amountPaid || 0) < i.grandTotal - 0.5));
+    } catch { /* ignore */ }
+  }, []);
+  useEffect(() => { loadTxns(); }, [loadTxns, vouchers]);
+
+  const setSel = (id, patch) => setCatSel((p) => ({ ...p, [id]: { ...(p[id] || {}), ...patch } }));
+  const doCategorize = async (t, toSuspense = false) => {
+    const sel = catSel[t.id] || {};
+    setBusy(`t${t.id}`);
+    try {
+      if (sel.invoiceId && !toSuspense) {
+        const r = await api.mapTxnToInvoice(t.id, Number(sel.invoiceId));
+        flash(r.excess > 0 ? `Mapped — ₹${formatINR(r.applied)} settled, excess ₹${formatINR(r.excess)} parked in "To Be Verified"` : 'Mapped to invoice — AR settled');
+      } else if (toSuspense) {
+        await api.categorizeTxn(t.id, { toSuspense: true });
+        flash('Parked in "To Be Verified" — categorise properly later');
+      } else {
+        if (!sel.ledgerId) return flash('Pick a ledger or an invoice first', 'err');
+        await api.categorizeTxn(t.id, { ledgerId: Number(sel.ledgerId) });
+        flash('Categorised & posted to the books');
+      }
+      await Promise.all([loadTxns(), load()]);
+    } catch (e) { flash(e.message, 'err'); } finally { setBusy(''); }
+  };
+
+  const txnView = txns.filter((t) => (txnTab === 'pending' ? t.status === 'pending' : t.status !== 'pending'));
+  const tCount = (s) => txns.filter((t) => (s === 'pending' ? t.status === 'pending' : t.status !== 'pending')).length;
 
   const sync = async () => {
     setBusy('sync');
@@ -164,6 +201,64 @@ export default function Accounting() {
           </div>
         )}
       </section>
+
+      {/* Bank transaction categorization */}
+      {txns.length > 0 && (
+        <section className="fsec">
+          <div className="fsec-head">
+            <h3>Bank Transactions · Categorization</h3>
+            <div className="fsec-tools">
+              <button className={`seg-toggle ${txnTab === 'pending' ? 'on' : ''}`} onClick={() => setTxnTab('pending')}>Pending ({tCount('pending')})</button>
+              <button className={`seg-toggle ${txnTab === 'done' ? 'on' : ''}`} onClick={() => setTxnTab('done')}>Categorized ({tCount('done')})</button>
+            </div>
+          </div>
+          {txnView.length === 0 ? <p className="subtle">{txnTab === 'pending' ? 'Nothing pending — all transactions are categorised. ✓' : 'No categorised transactions yet.'}</p> : (
+            <table className="data-table">
+              <thead><tr><th>Date</th><th>Description</th><th className="r">In</th><th className="r">Out</th><th>Bank</th>{txnTab === 'pending' ? <th style={{ minWidth: 330 }}>Categorise as</th> : <th>Categorised as</th>}<th className="r">{txnTab === 'pending' ? 'Action' : 'Status'}</th></tr></thead>
+              <tbody>
+                {txnView.map((t) => {
+                  const sel = catSel[t.id] || {};
+                  return (
+                    <tr key={t.id}>
+                      <td>{t.date}</td>
+                      <td style={{ maxWidth: 240 }}>{t.description || '—'}</td>
+                      <td className="r" style={{ color: '#1f8f4e' }}>{t.credit ? formatINR(t.credit) : ''}</td>
+                      <td className="r" style={{ color: '#c0392b' }}>{t.debit ? formatINR(t.debit) : ''}</td>
+                      <td>{t.bankName}</td>
+                      {txnTab === 'pending' ? (
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <select value={sel.ledgerId || ''} onChange={(e) => setSel(t.id, { ledgerId: e.target.value, invoiceId: '' })}>
+                              <option value="">— Ledger (expense / income / cash…) —</option>
+                              {ledgers.filter((l) => l.id !== t.bankLedgerId).map((l) => <option key={l.id} value={l.id}>{l.name} ({l.group?.name})</option>)}
+                            </select>
+                            {t.credit > 0 && unpaid.length > 0 && (
+                              <select value={sel.invoiceId || ''} onChange={(e) => setSel(t.id, { invoiceId: e.target.value, ledgerId: '' })}>
+                                <option value="">— or map to unpaid invoice (AR) —</option>
+                                {unpaid.map((i) => <option key={i.id} value={i.id}>{i.invoiceNo} · {i.buyerName} · ₹{formatINR(i.grandTotal - (i.amountPaid || 0))} due</option>)}
+                              </select>
+                            )}
+                          </div>
+                        </td>
+                      ) : (
+                        <td><b>{t.categorizedAs}</b>{t.status === 'partial' && <span className="badge rq-pending" style={{ marginLeft: 6 }}>excess parked</span>}</td>
+                      )}
+                      <td className="r">
+                        {txnTab === 'pending' ? (
+                          <div className="row-actions">
+                            <button className="btn xs primary" disabled={busy === `t${t.id}`} onClick={() => doCategorize(t)}>Post</button>
+                            <button className="btn xs" title="Park in To Be Verified (Suspense)" disabled={busy === `t${t.id}`} onClick={() => doCategorize(t, true)}>?</button>
+                          </div>
+                        ) : <span className={`badge ${t.status === 'partial' ? 'rq-pending' : 'rq-approved'}`}>{t.status}</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </section>
+      )}
 
       <div className="stat-row">
         <div className="stat-card"><div className="stat-label">Vouchers</div><div className="stat-value">{vouchers.length}</div></div>

@@ -117,13 +117,16 @@ function TopBar({ onHamburger, view, setView, isMobile, user, onLogout, onBrand 
       </div>
       <div className="topbar-user">
         <span className={`user-chip role-${user.role}`}>{user.username} · {user.role === 'user' ? 'accountant' : user.role}</span>
-        <button className="btn xs ghost-light" onClick={onLogout}>Logout</button>
+        <button className="btn-logout" onClick={onLogout} title="Sign out">⎋ Logout</button>
       </div>
     </header>
   );
 }
 
-function Sidebar({ onNavigate, isAdmin, isStaff }) {
+function Sidebar({ onNavigate, isAdmin, isStaff, user }) {
+  const perms = (isAdmin ? null : user?.perms) || {};
+  const can = (m) => isAdmin || (perms[m] && perms[m] !== 'none');
+  const canFull = (m) => isAdmin || perms[m] === 'full';
   const nav = useNavigate();
   const loc = useLocation();
   const invoiceActive = ['/', '/new', '/settings', '/invoices'].includes(loc.pathname) || loc.pathname.startsWith('/invoice');
@@ -154,13 +157,14 @@ function Sidebar({ onNavigate, isAdmin, isStaff }) {
             <span className="nav-label">My Workspace</span>
           </NavLink>
         )}
-        {isStaff && (
+        {isStaff && can('siteVisits') && (
           <NavLink to="/my-visits" onClick={onNavigate} className={() => 'nav-item' + (loc.pathname.startsWith('/my-visits') || loc.pathname.startsWith('/site-visits') ? ' active' : '')}>
             <span className="nav-icon"><IcPin /></span>
             <span className="nav-label">Site Visits</span>
           </NavLink>
         )}
 
+        {can('invoice') && (
         <div className="nav-group">
           <button
             className={`nav-item group-head ${invoiceActive ? 'active' : ''}`}
@@ -178,8 +182,9 @@ function Sidebar({ onNavigate, isAdmin, isStaff }) {
             </div>
           )}
         </div>
+        )}
 
-        {isAdmin && (
+        {canFull('clients') && (
           <NavLink to="/clients" onClick={onNavigate} className={() => 'nav-item' + (loc.pathname.startsWith('/clients') ? ' active' : '')}>
             <span className="nav-icon"><IcUsers /></span>
             <span className="nav-label">Clients</span>
@@ -210,6 +215,7 @@ function Sidebar({ onNavigate, isAdmin, isStaff }) {
             )}
           </div>
         )}
+        {can('accounting') && (
         <div className="nav-group">
           <button
             className={`nav-item group-head ${loc.pathname.startsWith('/accounting') ? 'active' : ''}`}
@@ -229,15 +235,16 @@ function Sidebar({ onNavigate, isAdmin, isStaff }) {
             </div>
           )}
         </div>
+        )}
 
-        <NavLink to="/inventory" onClick={onNavigate} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
+        {can('inventory') && (<NavLink to="/inventory" onClick={onNavigate} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
           <span className="nav-icon"><IcBox /></span>
           <span className="nav-label">Inventory</span>
-        </NavLink>
-        <NavLink to="/reports" onClick={onNavigate} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
+        </NavLink>)}
+        {can('reports') && (<NavLink to="/reports" onClick={onNavigate} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
           <span className="nav-icon"><IcChart /></span>
           <span className="nav-label">Reports</span>
-        </NavLink>
+        </NavLink>)}
         <NavLink to="/account" onClick={onNavigate} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
           <span className="nav-icon"><IcUser /></span>
           <span className="nav-label">My Account</span>
@@ -346,7 +353,7 @@ export default function App() {
           <TopBar onHamburger={() => setSidebarOpen((v) => !v)} view={view} setView={setView} isMobile={isMobile} user={user} onLogout={logout}
             onBrand={() => navTo(isAdmin ? '/overview' : isStaff ? '/me' : '/')} />
           <div className="app-body">
-            {sidebarOpen && <Sidebar onNavigate={closeOnMobile} isAdmin={isAdmin} isStaff={isStaff} />}
+            {sidebarOpen && <Sidebar onNavigate={closeOnMobile} isAdmin={isAdmin} isStaff={isStaff} user={user} />}
             {isMobile && sidebarOpen && <div className="sb-backdrop" onClick={() => setSidebarOpen(false)} />}
             <main className="app-main">
               <Routes>

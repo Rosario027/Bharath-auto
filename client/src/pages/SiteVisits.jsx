@@ -10,7 +10,8 @@ const fmtDT = (d) => new Date(d).toLocaleDateString('en-IN', { day: '2-digit', m
 // One page serves both: admin (/site-visits → all) and staff (/my-visits → own).
 export default function SiteVisits() {
   const nav = useNavigate();
-  const { isAdmin } = useAuth();
+  const { isAdmin: roleAdmin, user } = useAuth();
+  const isAdmin = roleAdmin || user?.perms?.siteVisits === 'full';
   const [visits, setVisits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');

@@ -18,9 +18,10 @@ async function myEmployee(username) {
   return user?.employee || null;
 }
 
-// Returns { isAdmin, employee } and enforces that staff have a profile.
+// Returns { isAdmin, employee }. "Full" module access behaves like admin
+// for visibility; 'user' access is scoped to the linked employee.
 async function ctx(req, res) {
-  const isAdmin = req.user.role === 'admin';
+  const isAdmin = req.user.role === 'admin' || req.user.perms?.siteVisits === 'full';
   const employee = isAdmin ? null : await myEmployee(req.user.username);
   if (!isAdmin && !employee) {
     res.status(403).json({ error: 'No staff profile is linked to this login.' });

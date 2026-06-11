@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
+    "archiver": "^7.0.1",
     "cors": "^2.8.5",
     "docx": "^9.0.2",
     "dotenv": "^16.4.5",

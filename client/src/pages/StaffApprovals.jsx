@@ -9,14 +9,15 @@ export default function StaffApprovals() {
   const nav = useNavigate();
   const [leaves, setLeaves] = useState([]);
   const [expenses, setExpenses] = useState([]);
+  const [attReqs, setAttReqs] = useState([]);
   const [busy, setBusy] = useState('');
   const [toast, setToast] = useState(null);
   const flash = (msg, kind = 'ok') => { setToast({ msg, kind }); setTimeout(() => setToast(null), 3000); };
 
   const load = useCallback(async () => {
     try {
-      const [l, x] = await Promise.all([api.adminLeaves(), api.adminExpenses()]);
-      setLeaves(l); setExpenses(x);
+      const [l, x, ar] = await Promise.all([api.adminLeaves(), api.adminExpenses(), api.adminAttendanceRequests().catch(() => [])]);
+      setLeaves(l); setExpenses(x); setAttReqs(ar);
     } catch (e) { flash(e.message, 'err'); }
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -57,6 +58,33 @@ export default function StaffApprovals() {
           <p className="subtle">{pendingL} leave request(s) and {pendingX} expense claim(s) waiting.</p>
         </div>
       </header>
+
+      {attReqs.length > 0 && (
+        <section className="fsec">
+          <h3>Attendance Update Requests <span className="hint">missed-day markings</span></h3>
+          <table className="data-table">
+            <thead><tr><th>Staff</th><th>Date</th><th>Work done</th><th>Status</th><th className="r">Decision</th></tr></thead>
+            <tbody>
+              {attReqs.map((a) => (
+                <tr key={a.id}>
+                  <td className="strong">{a.employee?.name}</td>
+                  <td className="mono">{a.date}</td>
+                  <td style={{ maxWidth: 300 }}>{a.workSummary}{a.adminComment && <div className="subtle" style={{ fontSize: 12 }}>You: {a.adminComment}</div>}</td>
+                  <td><span className={`badge rq-${a.status}`}>{a.status}</span></td>
+                  <td className="r">
+                    {a.status === 'pending' ? (
+                      <div className="row-actions">
+                        <button className="btn xs" disabled={busy === `a${a.id}`} onClick={async () => { setBusy(`a${a.id}`); try { await api.decideAttendanceRequest(a.id, 'approved', ''); await load(); flash('Approved — marked present'); } catch (e) { flash(e.message, 'err'); } finally { setBusy(''); } }}>✓ Approve</button>
+                        <button className="btn xs danger" disabled={busy === `a${a.id}`} onClick={async () => { const c = prompt('Reason for rejection (optional):', '') ?? ''; setBusy(`a${a.id}`); try { await api.decideAttendanceRequest(a.id, 'rejected', c); await load(); } catch (e) { flash(e.message, 'err'); } finally { setBusy(''); } }}>✕</button>
+                      </div>
+                    ) : <span className="subtle" style={{ fontSize: 12 }}>decided</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       <section className="fsec">
         <h3>Leave Requests</h3>

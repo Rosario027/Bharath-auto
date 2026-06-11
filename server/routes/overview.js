@@ -36,6 +36,22 @@ router.get('/', async (req, res, next) => {
       prisma.accVoucher.count(),
     ]);
 
+    // Invoices awaiting payment (AR) + today's site-visit outcomes
+    const unpaidList = await prisma.invoice.findMany({
+      where: { status: { not: 'deleted' }, docType: 'invoice' },
+      select: { grandTotal: true, amountPaid: true },
+    });
+    const unpaid = unpaidList.filter((i) => (i.amountPaid || 0) < i.grandTotal - 0.5);
+    const unpaidInvoices = { count: unpaid.length, value: Math.round(unpaid.reduce((s, i) => s + (i.grandTotal - (i.amountPaid || 0)), 0)) };
+
+    const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+    const todayOutcomes = await prisma.siteVisitUpdate.findMany({
+      where: { createdAt: { gte: startOfDay } },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      include: { siteVisit: { select: { id: true, refNo: true, customerName: true, employeeId: true, employee: { select: { name: true } } } } },
+    });
+
     res.json({
       invoices: { count: invCount, value: invSum._sum.grandTotal || 0 },
       clients, employees, presentToday,
@@ -46,6 +62,14 @@ router.get('/', async (req, res, next) => {
       followUps: followUpsDue,
       stock: { items: stockItems, low: lowStock },
       vouchers,
+      unpaidInvoices,
+      todayVisitOutcomes: todayOutcomes.map((u) => ({
+        id: u.id, tranche: u.tranche, status: u.status, summary: u.summary,
+        nextFollowUp: u.nextFollowUp, by: u.byUsername,
+        visitId: u.siteVisit.id, refNo: u.siteVisit.refNo,
+        customer: u.siteVisit.customerName, employeeId: u.siteVisit.employeeId,
+        employeeName: u.siteVisit.employee?.name || '',
+      })),
     });
   } catch (e) { next(e); }
 });

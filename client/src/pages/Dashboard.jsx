@@ -55,7 +55,6 @@ export default function Dashboard() {
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null);
-  const [nextNo, setNextNo] = useState('');
 
   const load = useCallback(async (query = '') => {
     setLoading(true);
@@ -67,7 +66,6 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { api.nextNumber().then((r) => setNextNo(r.invoiceNo)).catch(() => {}); }, [invoices]);
   useEffect(() => { if (isAdmin) api.staffSummary().then((s) => setTaskStats(s.tasks)).catch(() => {}); }, [isAdmin]);
 
   useEffect(() => {
@@ -121,10 +119,6 @@ export default function Dashboard() {
         <div className="stat-card">
           <div className="stat-label">Total Value</div>
           <div className="stat-value">{sym} {formatINR(total)}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Next Invoice No</div>
-          <div className="stat-value sm">{nextNo || '—'}</div>
         </div>
       </div>
 

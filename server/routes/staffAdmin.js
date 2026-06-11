@@ -96,6 +96,40 @@ router.put('/expenses/:id', async (req, res, next) => {
   }
 });
 
+// ── Attendance update requests (missed-day) ──
+router.get('/attendance-requests', async (req, res, next) => {
+  try {
+    const where = req.query.status ? { status: req.query.status } : {};
+    res.json(await prisma.attendanceRequest.findMany({
+      where, orderBy: [{ status: 'desc' }, { createdAt: 'desc' }], include: { employee: EMP_SEL },
+    }));
+  } catch (e) { next(e); }
+});
+
+router.put('/attendance-requests/:id', async (req, res, next) => {
+  try {
+    const { status, adminComment } = req.body || {};
+    if (!['approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
+    const reqRow = await prisma.attendanceRequest.update({
+      where: { id: Number(req.params.id) },
+      data: { status, adminComment: adminComment ?? '' },
+      include: { employee: EMP_SEL },
+    });
+    // Approval writes the attendance record (manual full day, summary carried over).
+    if (status === 'approved') {
+      await prisma.attendance.upsert({
+        where: { employeeId_date: { employeeId: reqRow.employeeId, date: reqRow.date } },
+        create: { employeeId: reqRow.employeeId, date: reqRow.date, present: true, manual: true, workSummary: reqRow.workSummary },
+        update: { present: true, manual: true, workSummary: reqRow.workSummary },
+      });
+    }
+    res.json(reqRow);
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ error: 'Request not found' });
+    next(e);
+  }
+});
+
 // ── Task assignment ──
 router.get('/tasks', async (req, res, next) => {
   try {
