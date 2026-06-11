@@ -167,6 +167,23 @@ body {
 .btn-logout { display: inline-flex; align-items: center; gap: 6px; background: #c0392b; border: none; color: #fff; font-weight: 800; font-size: 13px; padding: 8px 16px; border-radius: 9px; cursor: pointer; box-shadow: 0 2px 8px rgba(192,57,43,.4); }
 .btn-logout:hover { background: #a93226; }
 
+/* ── Purchases ── */
+.purchase-item-row {
+  display: grid;
+  grid-template-columns: 2.2fr .8fr .6fr .6fr 1fr .7fr auto auto;
+  gap: 8px 10px; align-items: end;
+  border: 1px dashed var(--line); border-radius: 10px;
+  padding: 10px 12px; margin-bottom: 10px; background: #fcfcfd;
+}
+.purchase-item-row label { font-size: 11px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+.purchase-item-row .pi-amount { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); }
+.purchase-item-row .pi-amount b { font-size: 13.5px; color: var(--ink); white-space: nowrap; }
+.purchase-item-row .pi-stock { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border-top: 1px dashed var(--line); padding-top: 8px; }
+.purchase-item-row .pi-stock select { max-width: 340px; font-size: 12.5px; }
+.purchase-item-row .pi-stock input { flex: 1; min-width: 160px; font-size: 12.5px; }
+.purchase-item-row .pi-check { flex-direction: row !important; align-items: center; gap: 6px; white-space: nowrap; font-size: 12px !important; }
+.app-root.is-mobile .purchase-item-row { grid-template-columns: 1fr 1fr; }
+
 /* bank recon import summary */
 .import-summary { margin-top: 14px; border: 1px solid #bfe3c8; background: #f1faf3; border-left: 4px solid #1f8f4e; color: #1c5c33; border-radius: 10px; padding: 12px 14px; font-size: 13.5px; }
 
@@ -405,6 +422,13 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: va
 .badge { padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: capitalize; }
 .badge.draft { background: #fff4e5; color: #b9651a; }
 .badge.finalized { background: #e7f6ec; color: #1f8f4e; }
+/* payment-derived invoice statuses */
+.badge.paid { background: #e7f6ec; color: #1f8f4e; }
+.badge.unpaid { background: #fdecea; color: #c0392b; }
+.badge.partial { background: #fff4e5; color: #b9651a; }
+.badge.cancelled { background: #f1f3f5; color: #98a2b3; text-decoration: line-through; }
+.badge.note { background: #eef2ff; color: #4f5bd5; }
+.badge.issued { background: #e8f3fd; color: #2a6fb0; }
 
 /* ── Forms ── */
 .fsec { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; margin-bottom: 16px; box-shadow: var(--shadow); }

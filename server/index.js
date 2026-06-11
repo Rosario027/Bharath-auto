@@ -21,6 +21,7 @@ import siteVisitsRouter from './routes/siteVisits.js';
 import inventoryRouter from './routes/inventory.js';
 import reportsRouter from './routes/reports.js';
 import accountingRouter from './routes/accounting.js';
+import purchasesRouter from './routes/purchases.js';
 import overviewRouter from './routes/overview.js';
 import backupRouter from './routes/backup.js';
 import { authRequired, adminRequired, requireMod } from './lib/auth.js';
@@ -44,6 +45,7 @@ app.use('/api/site-visits', authRequired, requireMod('siteVisits'), siteVisitsRo
 app.use('/api/inventory', requireModWrap('inventory', inventoryRouter));
 app.use('/api/reports', requireModWrap('reports', reportsRouter));
 app.use('/api/accounting', requireModWrap('accounting', accountingRouter));
+app.use('/api/purchases', requireModWrap('accounting', purchasesRouter)); // purchases live under the accounting grant
 app.use('/api/overview', overviewRouter);                  // general admin dashboard
 app.use('/api/backup', backupRouter);                      // full data backup (admin)
 

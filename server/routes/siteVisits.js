@@ -32,6 +32,7 @@ async function ctx(req, res) {
 
 function masterData(b) {
   return {
+    siteName: b.siteName ?? '',
     visitDate: isValidDate(b.visitDate) ? b.visitDate : localDate(),
     customerName: b.customerName ?? '',
     contactPerson: b.contactPerson ?? '',

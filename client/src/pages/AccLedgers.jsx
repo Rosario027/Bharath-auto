@@ -4,6 +4,13 @@ import { api, exporter } from '../api.js';
 import { formatINR } from '../utils/money.js';
 
 const blank = { name: '', groupId: '', openingBalance: '', openingType: 'dr', gstin: '', notes: '' };
+const blankGroup = { name: '', nature: '', parent: '' };
+const NATURES = [
+  ['asset', 'Asset — something the business owns (stock, deposits, receivables…)'],
+  ['liability', 'Liability — something the business owes (loans, payables, taxes…)'],
+  ['income', 'Income — money earned (sales, service income, commission…)'],
+  ['expense', 'Expense — money spent (rent, salaries, freight…)'],
+];
 const fmtD = (s) => { if (!s) return '—'; const [y, m, d] = s.split('-'); return `${d}.${m}.${y}`; };
 
 export default function AccLedgers() {
@@ -14,6 +21,7 @@ export default function AccLedgers() {
   const [q, setQ] = useState('');
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ ...blank });
+  const [newGroup, setNewGroup] = useState(null); // null = picking from list; object = creating a group
   const [edits, setEdits] = useState({});
   const [statement, setStatement] = useState(null);
   const [busy, setBusy] = useState('');
@@ -38,8 +46,17 @@ export default function AccLedgers() {
     e.preventDefault();
     setBusy('add');
     try {
-      await api.accCreateLedger({ ...form, openingBalance: Number(form.openingBalance) || 0 });
-      setForm({ ...blank }); setAdding(false); await load(); flash('Ledger created');
+      // Creating a new group inline? Make the group first (with its nature),
+      // then put the ledger under it.
+      let groupId = form.groupId;
+      if (newGroup) {
+        if (!newGroup.name.trim()) throw new Error('Enter the new group name');
+        if (!newGroup.nature) throw new Error('Pick what the new group is — Asset, Liability, Income or Expense');
+        const g = await api.accCreateGroup(newGroup);
+        groupId = g.id;
+      }
+      await api.accCreateLedger({ ...form, groupId, openingBalance: Number(form.openingBalance) || 0 });
+      setForm({ ...blank }); setNewGroup(null); setAdding(false); await load(); flash('Ledger created');
     } catch (e2) { flash(e2.message, 'err'); } finally { setBusy(''); }
   };
 
@@ -120,11 +137,27 @@ export default function AccLedgers() {
           <div className="grid2">
             <label>Name *<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
             <label>Under Group *
-              <select value={form.groupId} onChange={(e) => setForm({ ...form, groupId: e.target.value })}>
+              <select value={newGroup ? '__new__' : form.groupId}
+                onChange={(e) => {
+                  if (e.target.value === '__new__') { setNewGroup({ ...blankGroup }); setForm({ ...form, groupId: '' }); }
+                  else { setNewGroup(null); setForm({ ...form, groupId: e.target.value }); }
+                }}>
                 <option value="">Select…</option>
                 {groups.map((g) => <option key={g.id} value={g.id}>{g.name} ({g.nature})</option>)}
+                <option value="__new__">＋ Create a new group…</option>
               </select>
             </label>
+            {newGroup && (
+              <>
+                <label>New Group Name *<input value={newGroup.name} placeholder="e.g. Transport Charges" onChange={(e) => setNewGroup({ ...newGroup, name: e.target.value })} /></label>
+                <label className="full">What is this group? *
+                  <select value={newGroup.nature} onChange={(e) => setNewGroup({ ...newGroup, nature: e.target.value })}>
+                    <option value="">Select — this decides where it appears in P&L / Balance Sheet…</option>
+                    {NATURES.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+                  </select>
+                </label>
+              </>
+            )}
             <label>Opening Balance (₹)<input type="number" step="any" value={form.openingBalance} onChange={(e) => setForm({ ...form, openingBalance: e.target.value })} /></label>
             <label>Dr / Cr
               <select value={form.openingType} onChange={(e) => setForm({ ...form, openingType: e.target.value })}>
@@ -134,7 +167,7 @@ export default function AccLedgers() {
             <label>GSTIN<input value={form.gstin} onChange={(e) => setForm({ ...form, gstin: e.target.value })} /></label>
             <label>Notes<input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></label>
           </div>
-          <div style={{ marginTop: 12 }}><button className="btn primary" type="submit" disabled={busy === 'add' || !form.name.trim() || !form.groupId}>{busy === 'add' ? 'Saving…' : 'Create ledger'}</button></div>
+          <div style={{ marginTop: 12 }}><button className="btn primary" type="submit" disabled={busy === 'add' || !form.name.trim() || (!form.groupId && !(newGroup?.name?.trim() && newGroup?.nature))}>{busy === 'add' ? 'Saving…' : newGroup ? 'Create group & ledger' : 'Create ledger'}</button></div>
         </form>
       )}
 
@@ -161,7 +194,15 @@ export default function AccLedgers() {
                     <div className="row-actions">
                       <button className="btn xs" onClick={() => openStatement(l)}>Statement</button>
                       <button className="btn xs primary" disabled={!edits[l.id] || busy === `s${l.id}`} onClick={() => save(l)}>Save</button>
-                      {!l.isSystem && <button className="btn xs danger" onClick={() => remove(l)}>✕</button>}
+                      {/* Delete is only possible for non-core ledgers with no entries —
+                          show WHY instead of hiding the button. */}
+                      {l.isSystem ? (
+                        <button className="btn xs danger" disabled title="Core system ledger (used by auto-posting) — cannot be deleted">✕</button>
+                      ) : (l.totalDebit || l.totalCredit) ? (
+                        <button className="btn xs danger" disabled title="This ledger has voucher entries — delete those vouchers first (see Statement)">✕</button>
+                      ) : (
+                        <button className="btn xs danger" title="Delete this ledger" onClick={() => remove(l)}>✕</button>
+                      )}
                     </div>
                   </td>
                 </tr>

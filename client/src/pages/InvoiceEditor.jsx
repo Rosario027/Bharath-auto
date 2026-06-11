@@ -36,7 +36,7 @@ function defaultInvoice(settings) {
     igstRate: settings.defaultIgst,
     theme: settings.defaultTheme,
     notes: '',
-    status: 'draft',
+    status: 'issued',
     items: [newItem(settings)],
   };
 }

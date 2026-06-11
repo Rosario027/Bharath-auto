@@ -69,6 +69,14 @@ export async function ensureLoginQuotes() {
   }
 }
 
+// One-time data fix: the old "draft/finalized" invoice statuses meant nothing
+// to users — every saved document is an issued document. Payment state is
+// derived from amountPaid; "deleted" stays as the cancelled marker.
+export async function fixInvoiceStatuses() {
+  const n = await prisma.invoice.updateMany({ where: { status: { in: ['draft', 'finalized'] } }, data: { status: 'issued' } });
+  if (n.count > 0) console.log(`[seed] ${n.count} invoice(s) migrated draft/finalized → issued.`);
+}
+
 export async function seed() {
   const existing = await prisma.companySettings.findUnique({ where: { id: 1 } });
   if (existing) {
@@ -76,6 +84,7 @@ export async function seed() {
     await ensureDefaultSeries(existing);
     await ensureLoginQuotes();
     await ensureUsers();
+    await fixInvoiceStatuses();
     return existing;
   }
 

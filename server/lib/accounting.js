@@ -182,6 +182,76 @@ export async function removeInvoiceFromBooks(invoiceId) {
   return !!v;
 }
 
+// ── Purchase bill ↔ books ──
+// Dr Purchase (taxable) + Dr GST Input / Cr Supplier (Sundry Creditors).
+function purchaseVoucherLines(bill, ids) {
+  const lines = [];
+  const push = (ledgerId, debit, credit) => { if (r2(debit) || r2(credit)) lines.push({ ledgerId, debit: r2(debit), credit: r2(credit), sortOrder: lines.length }); };
+  push(ids.purchase, bill.subTotal, 0);
+  if (bill.cgstAmount) push(ids.cgstIn, bill.cgstAmount, 0);
+  if (bill.sgstAmount) push(ids.sgstIn, bill.sgstAmount, 0);
+  if (bill.igstAmount) push(ids.igstIn, bill.igstAmount, 0);
+  push(ids.supplier, 0, bill.grandTotal);
+  return lines;
+}
+
+async function purchaseLedgerIds(tx, supplierName) {
+  return {
+    purchase: (await ledgerByName(tx, 'Purchase', 'Purchase Accounts')).id,
+    cgstIn: (await ledgerByName(tx, 'CGST Input', 'Duties & Taxes')).id,
+    sgstIn: (await ledgerByName(tx, 'SGST Input', 'Duties & Taxes')).id,
+    igstIn: (await ledgerByName(tx, 'IGST Input', 'Duties & Taxes')).id,
+    supplier: (await ledgerByName(tx, supplierName, 'Sundry Creditors')).id,
+  };
+}
+
+export async function postPurchaseToBooks(bill, supplierName, username = 'system') {
+  await ensureCoA();
+  return prisma.$transaction(async (tx) => {
+    const ids = await purchaseLedgerIds(tx, supplierName);
+    const voucher = await tx.accVoucher.create({
+      data: {
+        voucherNo: await nextVoucherNo(tx, 'purchase'),
+        vtype: 'purchase',
+        date: bill.billDate || d10(new Date()),
+        narration: `Purchase from ${supplierName}${bill.billNo ? ` (Bill ${bill.billNo})` : ''} — ${bill.refNo}`,
+        refNo: bill.billNo || bill.refNo,
+        createdBy: username,
+        lines: { create: purchaseVoucherLines(bill, ids) },
+      },
+    });
+    await tx.purchaseBill.update({ where: { id: bill.id }, data: { voucherId: voucher.id } });
+    return voucher;
+  });
+}
+
+export async function repostPurchaseToBooks(bill, supplierName, username = 'system') {
+  const existing = bill.voucherId ? await prisma.accVoucher.findUnique({ where: { id: bill.voucherId }, include: { lines: true } }) : null;
+  if (!existing) return postPurchaseToBooks(bill, supplierName, username);
+  const oldTotal = r2(existing.lines.reduce((s, l) => s + l.debit, 0));
+  return prisma.$transaction(async (tx) => {
+    const ids = await purchaseLedgerIds(tx, supplierName);
+    await tx.accVoucherLine.deleteMany({ where: { voucherId: existing.id } });
+    return tx.accVoucher.update({
+      where: { id: existing.id },
+      data: {
+        date: bill.billDate || existing.date,
+        narration: `Purchase from ${supplierName}${bill.billNo ? ` (Bill ${bill.billNo})` : ''} — ${bill.refNo}`,
+        refNo: bill.billNo || bill.refNo,
+        editCount: existing.editCount + 1,
+        lines: { create: purchaseVoucherLines(bill, ids) },
+        edits: { create: { byUsername: username, summary: `Purchase ${bill.refNo} edited — amount ${oldTotal} → ${r2(bill.grandTotal)}` } },
+      },
+    });
+  });
+}
+
+export async function removePurchaseFromBooks(bill) {
+  if (!bill.voucherId) return false;
+  await prisma.accVoucher.delete({ where: { id: bill.voucherId } }).catch(() => {});
+  return true;
+}
+
 // Post every invoice that isn't in the books yet (backfill / sync button).
 export async function syncAllInvoices() {
   const invoices = await prisma.invoice.findMany({ where: { status: { not: 'deleted' } }, include: { items: true } });

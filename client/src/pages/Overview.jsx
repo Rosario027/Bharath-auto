@@ -5,16 +5,55 @@ import { formatINR } from '../utils/money.js';
 
 const fmtD = (s) => { if (!s) return ''; const [y, m, d] = s.split('-'); return `${d}.${m}.${y}`; };
 
+// Work overview pie — lives on the main dashboard (moved from the invoice list).
+function TaskPie({ data }) {
+  const entries = [
+    { label: 'Yet to be taken', value: data.assigned, color: '#e8a13b' },
+    { label: 'Processing', value: data.processing, color: '#4f8fd5' },
+    { label: 'Completed', value: data.completed, color: '#5B9B36' },
+  ];
+  const total = entries.reduce((s, e) => s + e.value, 0);
+  let acc = 0;
+  const R = 15.9155;
+  return (
+    <div className="pie-wrap">
+      <svg viewBox="0 0 42 42" className="pie">
+        <circle cx="21" cy="21" r={R} fill="none" stroke="#eef1f5" strokeWidth="7" />
+        {total > 0 && entries.map((e, i) => {
+          const frac = e.value / total;
+          const el = (
+            <circle key={i} cx="21" cy="21" r={R} fill="none" stroke={e.color} strokeWidth="7"
+              strokeDasharray={`${frac * 100} ${100 - frac * 100}`} strokeDashoffset={25 - acc * 100} />
+          );
+          acc += frac;
+          return el;
+        })}
+        <text x="21" y="20" textAnchor="middle" fontSize="8" fontWeight="800" fill="#1f2530">{total}</text>
+        <text x="21" y="27" textAnchor="middle" fontSize="3.4" fill="#7b8696">tasks</text>
+      </svg>
+      <div className="pie-legend">
+        {entries.map((e, i) => (
+          <div key={i}><span className="dot" style={{ background: e.color }} /> {e.label}: <b>{e.value}</b></div>
+        ))}
+        <div><span className="dot" style={{ background: '#98a2b3' }} /> Admin to-do: <b>{data.adminTodo}</b></div>
+        <div><span className="dot" style={{ background: '#E8732B' }} /> Upcoming (due): <b>{data.upcoming}</b></div>
+      </div>
+    </div>
+  );
+}
+
 // General admin dashboard — KPIs across every module + to-do reminders.
 export default function Overview() {
   const nav = useNavigate();
   const [d, setD] = useState(null);
   const [acc, setAcc] = useState(null);
+  const [taskStats, setTaskStats] = useState(null);
   const [added, setAdded] = useState(() => new Set());
 
   useEffect(() => {
     api.getOverview().then(setD).catch(() => {});
     api.accOverview().then(setAcc).catch(() => {});
+    api.staffSummary().then((s) => setTaskStats(s.tasks)).catch(() => {});
   }, []);
 
   if (!d) return <div className="page"><div className="empty">Loading dashboard…</div></div>;
@@ -77,6 +116,16 @@ export default function Overview() {
               )}
             </div>
           ))}
+        </section>
+      )}
+
+      {taskStats && (
+        <section className="fsec" style={{ marginTop: 20 }}>
+          <div className="fsec-head">
+            <h3>Work Overview</h3>
+            <button className="btn xs" onClick={() => nav('/staff-tasks')}>Open Tasks →</button>
+          </div>
+          <TaskPie data={taskStats} />
         </section>
       )}
 

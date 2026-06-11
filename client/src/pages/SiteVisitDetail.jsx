@@ -76,8 +76,8 @@ export default function SiteVisitDetail() {
       <header className="page-head">
         <div>
           <button className="btn ghost" onClick={() => nav(isAdmin ? '/site-visits' : '/my-visits')}>&larr; Site Visits</button>
-          <h1 style={{ marginTop: 6 }}>{v.refNo} · {v.customerName || v.builderName || 'Site Visit'} <span className={`badge sv-${v.status}`}>{v.status}</span></h1>
-          <p className="subtle">First visit {fmtD(v.visitDate)} · {v.trancheCount ?? v.updates.length} tranche(s) · Executive: <b>{v.employee?.name || 'Unassigned'}</b></p>
+          <h1 style={{ marginTop: 6 }}>{v.refNo} · {v.siteName || v.customerName || v.builderName || 'Site Visit'} <span className={`badge sv-${v.status}`}>{v.status}</span></h1>
+          <p className="subtle">{v.siteName && (v.customerName || v.builderName) ? `${v.customerName || v.builderName} · ` : ''}First visit {fmtD(v.visitDate)} · {v.trancheCount ?? v.updates.length} tranche(s) · Executive: <b>{v.employee?.name || 'Unassigned'}</b></p>
         </div>
         <button className="btn primary" onClick={() => { setShowUpdate((s) => !s); }}>{showUpdate ? 'Cancel' : '+ Add Update (new tranche)'}</button>
       </header>
@@ -136,6 +136,7 @@ export default function SiteVisitDetail() {
         <section className="fsec">
           <h3>Customer & Location</h3>
           <div className="sv-grid">
+            <Field label="Site Name" value={v.siteName} />
             <Field label="Customer" value={v.customerName} />
             <Field label="Contact Person" value={v.contactPerson} />
             <Field label="Phone" value={v.contactPhone} />

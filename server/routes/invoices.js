@@ -184,7 +184,7 @@ function buildScalarData(body, totals, settings) {
     amountWords: totals.amountWords,
     theme: body.theme ?? settings.defaultTheme,
     notes: body.notes ?? '',
-    status: body.status ?? 'draft',
+    status: body.status === 'deleted' ? 'deleted' : 'issued',
   };
 }
 

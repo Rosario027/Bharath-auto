@@ -126,6 +126,7 @@ export const api = {
 
   // accounting (admin + accountant)
   accGroups: () => req('/accounting/groups'),
+  accCreateGroup: (data) => req('/accounting/groups', { method: 'POST', body: JSON.stringify(data) }),
   accLedgers: () => req('/accounting/ledgers'),
   accCreateLedger: (data) => req('/accounting/ledgers', { method: 'POST', body: JSON.stringify(data) }),
   accUpdateLedger: (id, data) => req(`/accounting/ledgers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -172,6 +173,17 @@ export const api = {
   assignTask: (data) => req('/staff-admin/tasks', { method: 'POST', body: JSON.stringify(data) }),
   updateTask: (id, data) => req(`/staff-admin/tasks/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteTask: (id) => req(`/staff-admin/tasks/${id}`, { method: 'DELETE' }),
+
+  // purchases + supplier register (under the accounting grant)
+  listSuppliers: () => req('/purchases/suppliers'),
+  createSupplier: (data) => req('/purchases/suppliers', { method: 'POST', body: JSON.stringify(data) }),
+  updateSupplier: (id, data) => req(`/purchases/suppliers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteSupplier: (id) => req(`/purchases/suppliers/${id}`, { method: 'DELETE' }),
+  listPurchases: () => req('/purchases'),
+  getPurchase: (id) => req(`/purchases/${id}`),
+  createPurchase: (data) => req('/purchases', { method: 'POST', body: JSON.stringify(data) }),
+  updatePurchase: (id, data) => req(`/purchases/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deletePurchase: (id) => req(`/purchases/${id}`, { method: 'DELETE' }),
 
   // customers / clients
   listCustomers: () => req('/customers'),

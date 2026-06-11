@@ -24,6 +24,7 @@ import Accounting from './pages/Accounting.jsx';
 import AccVoucherEntry from './pages/AccVoucherEntry.jsx';
 import AccLedgers from './pages/AccLedgers.jsx';
 import AccBankRecon from './pages/AccBankRecon.jsx';
+import AccPurchases from './pages/AccPurchases.jsx';
 import AccReports from './pages/AccReports.jsx';
 import AccAssets from './pages/AccAssets.jsx';
 
@@ -230,6 +231,7 @@ function Sidebar({ onNavigate, isAdmin, isStaff, user }) {
             <div className="nav-sub">
               {sub('/accounting', 'Day Book', true)}
               {sub('/accounting/voucher/new', 'Voucher Entry')}
+              {sub('/accounting/purchases', 'Purchases')}
               {sub('/accounting/ledgers', 'Ledgers')}
               {sub('/accounting/bank-recon', 'Bank Reconciliation')}
               {sub('/accounting/reports', 'Statements')}
@@ -385,6 +387,7 @@ export default function App() {
                 <Route path="/accounting/voucher/:id" element={<AccVoucherEntry />} />
                 <Route path="/accounting/ledgers" element={<AccLedgers />} />
                 <Route path="/accounting/bank-recon" element={<AccBankRecon />} />
+                <Route path="/accounting/purchases" element={<AccPurchases />} />
                 <Route path="/accounting/reports" element={<AccReports />} />
                 <Route path="/accounting/assets" element={<AccAssets />} />
                 <Route path="/app-settings" element={<AdminOnly><AppSettings /></AdminOnly>} />

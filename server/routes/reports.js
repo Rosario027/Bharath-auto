@@ -31,20 +31,26 @@ async function send(res, wb, name) {
 }
 
 // ── GST / Sales report (GSTR-1 style) ──
+// Cancelled (deleted) invoices appear ONLY in the summary / documents-issued
+// section — counted for the numbering record, never valued, and excluded
+// from B2B / B2C / CN-DN / HSN sheets.
 router.get('/sales', async (req, res, next) => {
   try {
     const { from, to } = range(req);
-    const invoices = await prisma.invoice.findMany({
-      where: { status: { not: 'deleted' }, invoiceDate: { gte: new Date(from), lte: new Date(`${to}T23:59:59`) } },
+    const allDocs = await prisma.invoice.findMany({
+      where: { invoiceDate: { gte: new Date(from), lte: new Date(`${to}T23:59:59`) } },
       include: { items: true },
       orderBy: { invoiceDate: 'asc' },
     });
+    const invoices = allDocs.filter((i) => i.status !== 'deleted');
+    const cancelled = allDocs.filter((i) => i.status === 'deleted');
 
     const sales = invoices.filter((i) => i.docType === 'invoice');
     const cns = invoices.filter((i) => i.docType === 'credit-note');
     const dns = invoices.filter((i) => i.docType === 'debit-note');
     const b2b = sales.filter((i) => (i.buyerGstn || '').trim());
     const b2c = sales.filter((i) => !(i.buyerGstn || '').trim());
+    const cancelledSales = cancelled.filter((i) => i.docType === 'invoice');
     const sum = (list, f = (i) => i.grandTotal) => r2(list.reduce((s, i) => s + (f(i) || 0), 0));
 
     const wb = new ExcelJS.Workbook();
@@ -61,11 +67,38 @@ router.get('/sales', async (req, res, next) => {
     s.addRow(['B2C Sales (without GSTIN)', b2c.length, sum(b2c)]);
     s.addRow(['Credit Notes issued', cns.length, sum(cns)]);
     s.addRow(['Debit Notes issued', dns.length, sum(dns)]);
+    const cancRow = s.addRow(['Cancelled Invoices (reporting only — no value)', cancelledSales.length, '']);
+    cancRow.getCell(1).font = { italic: true, color: { argb: 'FF98A2B3' } };
     s.addRow(['Net Sales (Sales − CN + DN)', '', r2(sum(sales) - sum(cns) + sum(dns))]).font = { bold: true };
     s.addRow(['Taxable Value (sales)', '', sum(sales, (i) => i.subTotal)]);
     s.addRow(['CGST', '', sum(sales, (i) => i.cgstAmount)]);
     s.addRow(['SGST', '', sum(sales, (i) => i.sgstAmount)]);
     s.addRow(['IGST', '', sum(sales, (i) => i.igstAmount)]);
+
+    // ── Documents issued (GSTR-1 Table 13 style) ──
+    // Per series: numbering range, total raised, cancelled count & numbers.
+    s.addRow([]);
+    s.addRow(['DOCUMENTS ISSUED DURING THE PERIOD']).font = { bold: true, size: 12 };
+    headStyle(s.addRow(['Series (by prefix)', 'From — To', 'Total Issued', 'Cancelled', 'Net Issued']));
+    const allSalesDocs = allDocs.filter((i) => i.docType === 'invoice');
+    const seriesOf = (no) => { const m = (no || '').match(/^(.*?)(\d+)$/); return m ? m[1] || '(no prefix)' : '(other)'; };
+    const bySeries = new Map();
+    for (const inv of allSalesDocs) {
+      const key = seriesOf(inv.invoiceNo);
+      const cur = bySeries.get(key) || { nos: [], cancelled: [] };
+      cur.nos.push(inv.invoiceNo);
+      if (inv.status === 'deleted') cur.cancelled.push(inv.invoiceNo);
+      bySeries.set(key, cur);
+    }
+    const seqNum = (no) => { const m = (no || '').match(/(\d+)$/); return m ? Number(m[1]) : 0; };
+    for (const [prefix, g] of [...bySeries.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+      const sorted = [...g.nos].sort((a, b) => seqNum(a) - seqNum(b));
+      s.addRow([prefix, `${sorted[0]} — ${sorted[sorted.length - 1]}`, g.nos.length, g.cancelled.length, g.nos.length - g.cancelled.length]);
+    }
+    if (cancelledSales.length) {
+      s.addRow([]);
+      s.addRow(['Cancelled invoice numbers', cancelledSales.map((i) => i.invoiceNo).join(', ')]).font = { italic: true };
+    }
 
     // Detail sheets
     const detailCols = [

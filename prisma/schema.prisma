@@ -160,6 +160,7 @@ model Employee {
 model SiteVisit {
   id         Int       @id @default(autoincrement())
   refNo      String    @unique @default("") // SV-0001 …
+  siteName   String    @default("") // friendly name to find the visit later
   employeeId Int?      // current assignee (sales executive)
   employee   Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
   createdBy  String    @default("")
@@ -506,7 +507,7 @@ model Invoice {
   theme  String  @default("orange")
   notes  String  @default("")
   amountPaid Float @default(0) // settled via bank categorization (AR)
-  status String  @default("draft") // draft | finalized | deleted
+  status String  @default("issued") // issued | deleted (payment state derives from amountPaid)
 
   // Edit tracking
   editCount    Int       @default(0)
@@ -543,4 +544,79 @@ model InvoiceItem {
   gstInclusive Boolean @default(false) // true => entered price already includes GST
   inventoryItemId Int? // optional stock link — deducts on save
   total       Float   @default(0)
+}
+
+// ──────────────────────────────────────────────────────────────
+// PURCHASES MODULE — supplier register + purchase bills.
+// A purchase bill stocks-in inventory (unless delivered direct to a
+// customer site) and auto-posts a purchase voucher into the books:
+// Dr Purchase + Dr GST Input / Cr Supplier (Sundry Creditors).
+// Open AP is derived FIFO from the books (see openBills()), so bank
+// reconciliation payments settle these bills automatically.
+// ──────────────────────────────────────────────────────────────
+model Supplier {
+  id            Int      @id @default(autoincrement())
+  name          String   @unique
+  group         String   @default("") // supplier group / category (e.g. Electricals, Motors)
+  contactPerson String   @default("")
+  phone         String   @default("")
+  altPhone      String   @default("")
+  email         String   @default("")
+  gstn          String   @default("")
+  stateCode     String   @default("")
+  addressLines  String[] @default([])
+  notes         String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  purchases     PurchaseBill[]
+}
+
+model PurchaseBill {
+  id         Int      @id @default(autoincrement())
+  refNo      String   @unique @default("") // internal PB-0001 …
+  billNo     String   @default("")         // supplier's invoice / bill number
+  billDate   String   @default("")         // yyyy-mm-dd
+  supplierId Int
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+
+  // Tax (snapshot)
+  taxMode    String @default("intra") // intra => CGST+SGST input, inter => IGST input
+  subTotal   Float  @default(0)
+  cgstAmount Float  @default(0)
+  sgstAmount Float  @default(0)
+  igstAmount Float  @default(0)
+  grandTotal Float  @default(0)
+
+  // Goods destination
+  storeTo           String @default("warehouse") // warehouse (stock-in) | customer (direct delivery, no stock)
+  warehouseLocation String @default("")          // where the goods are stored
+  deliverTo         String @default("")          // customer / site when delivered direct
+
+  notes     String @default("") // purchase notes
+  status    String @default("open") // open | deleted
+  voucherId Int?   // the posted books voucher (vtype purchase)
+  createdBy String @default("")
+
+  items PurchaseItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PurchaseItem {
+  id     Int          @id @default(autoincrement())
+  billId Int
+  bill   PurchaseBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  slNo            Int     @default(1)
+  description     String
+  hsnCode         String  @default("")
+  qty             Float   @default(1)
+  unit            String  @default("Nos")
+  price           Float   @default(0) // per-unit purchase price (ex-GST)
+  gstRate         Float   @default(18)
+  inventoryItemId Int?    // linked stock item (stocked-in on save)
+  addToStock      Boolean @default(true) // auto-create/match an inventory item by name
+  notes           String  @default("")
+  total           Float   @default(0)
 }

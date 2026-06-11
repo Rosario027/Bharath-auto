@@ -6,7 +6,7 @@ import { useAuth } from '../App.jsx';
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
 const blank = {
-  visitDate: todayStr(), customerName: '', contactPerson: '', contactPhone: '', altPhone: '',
+  siteName: '', visitDate: todayStr(), customerName: '', contactPerson: '', contactPhone: '', altPhone: '',
   googleLocation: '', address: '', district: '', buildingSize: '', projectType: '',
   proType: '', proName: '', proPhone: '', builderName: '', builderPhone: '', electricalContractor: '',
   leadSource: '', requirementSummary: '', productsDiscussed: '', homeTheatre: '',
@@ -98,6 +98,9 @@ export default function SiteVisitNew() {
                 </select>
               </label>
             )}
+            <label className="full">Site Name <span className="hint">to find this visit easily later</span>
+              <input value={v.siteName} placeholder='e.g. "Saravana Villa — Vadavalli" or "ABC Mills gate automation"' onChange={(e) => set({ siteName: e.target.value })} />
+            </label>
             {L('Visit Date', 'visitDate', { type: 'date' })}
             {L('Customer Name *', 'customerName', { placeholder: 'e.g. Mr. Saravanakumar' })}
             {L('Contact Person', 'contactPerson')}

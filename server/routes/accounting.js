@@ -38,6 +38,24 @@ router.get('/groups', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Create a custom group — the user states its nature (asset / liability /
+// income / expense) so reports classify it correctly.
+router.post('/groups', async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const name = (b.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Group name is required' });
+    if (!['asset', 'liability', 'income', 'expense'].includes(b.nature)) {
+      return res.status(400).json({ error: 'Pick what this group is: Asset, Liability, Income or Expense' });
+    }
+    const group = await prisma.accGroup.create({ data: { name, nature: b.nature, parent: (b.parent || '').trim(), isSystem: false } });
+    res.status(201).json(group);
+  } catch (e) {
+    if (e.code === 'P2002') return res.status(409).json({ error: 'A group with that name already exists' });
+    next(e);
+  }
+});
+
 // ── Ledgers (with computed balances) ──
 router.get('/ledgers', async (req, res, next) => {
   try {
