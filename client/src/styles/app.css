@@ -193,6 +193,80 @@ body {
 .acc-kpi b { font-size: 17px; font-variant-numeric: tabular-nums; }
 .kpi-grid .kpi-big b { font-size: 21px; }
 .kpi-sub { font-size: 11px; color: var(--muted); font-style: normal; }
+
+/* ── Overview / Admin Dashboard KPI cards ── */
+.dash-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(205px, 1fr));
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.dash-kpi {
+  --acc: #e8a13b;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--acc);
+  border-radius: 14px;
+  padding: 20px 22px 18px;
+  background: #ffffff;
+  cursor: pointer;
+  text-align: left;
+  transition: transform .18s ease, box-shadow .18s ease;
+  box-shadow: 0 1px 4px rgba(16,24,40,.06);
+  overflow: hidden;
+  width: 100%;
+}
+.dash-kpi::after {
+  content: '';
+  position: absolute;
+  bottom: -14px; right: -14px;
+  width: 76px; height: 76px;
+  border-radius: 50%;
+  background: var(--acc);
+  opacity: .08;
+  pointer-events: none;
+}
+.dash-kpi:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 32px rgba(16,24,40,.11);
+}
+.dash-kpi-lbl {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .65px;
+  line-height: 1;
+}
+.dash-kpi-val {
+  display: block;
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  margin-top: 10px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-kpi-sub {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 5px;
+  line-height: 1.3;
+}
+.dash-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.app-root.is-mobile .dash-2col { grid-template-columns: 1fr; }
 .todo-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-left-width: 4px; border-radius: 10px; background: #fcfcfd; margin-bottom: 8px; }
 .todo-row.pr-bd-high { border-left-color: #c0392b; }
 .todo-row.pr-bd-medium { border-left-color: #e8a13b; }

@@ -19,36 +19,44 @@ export default function Overview() {
 
   if (!d) return <div className="page"><div className="empty">Loading dashboard…</div></div>;
 
-  const KPI = ({ label, value, sub, to, accent }) => (
-    <button className="acc-kpi kpi-big" onClick={() => nav(to)} style={accent ? { borderLeft: `4px solid ${accent}` } : {}}>
-      <span>{label}</span><b>{value}</b>{sub && <i className="kpi-sub">{sub}</i>}
+  const KPI = ({ label, value, sub, to, accent, highlight }) => (
+    <button className="dash-kpi" onClick={() => nav(to)} style={{ '--acc': accent || '#e8a13b' }}>
+      <span className="dash-kpi-lbl">{label}</span>
+      <strong className="dash-kpi-val" style={highlight ? { color: accent } : {}}>{value}</strong>
+      {sub && <span className="dash-kpi-sub">{sub}</span>}
     </button>
   );
+
+  const today = new Date();
+  const dateStr = today.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
     <div className="page">
       <header className="page-head">
-        <div><h1>Dashboard</h1><p className="subtle">Everything at a glance — click any card to open the module.</p></div>
+        <div>
+          <h1>Dashboard</h1>
+          <p className="subtle">{dateStr} &mdash; click any card to open the module.</p>
+        </div>
         <button className="btn primary" onClick={() => nav('/new')}>+ New Invoice</button>
       </header>
 
-      <div className="acc-kpis kpi-grid">
+      <div className="dash-kpi-grid">
         <KPI label="Invoices" value={d.invoices.count} sub={`₹ ${formatINR(d.invoices.value)}`} to="/" accent="#E8732B" />
-        {d.unpaidInvoices && <KPI label="Awaiting Payment (AR)" value={d.unpaidInvoices.count} sub={`₹ ${formatINR(d.unpaidInvoices.value)} outstanding`} to="/" accent={d.unpaidInvoices.count ? '#c0392b' : '#5B9B36'} />}
+        {d.unpaidInvoices && <KPI label="Awaiting Payment (AR)" value={d.unpaidInvoices.count} sub={`₹ ${formatINR(d.unpaidInvoices.value)} outstanding`} to="/" accent={d.unpaidInvoices.count ? '#c0392b' : '#5B9B36'} highlight={!!d.unpaidInvoices.count} />}
+        {acc && <KPI label={acc.netProfit >= 0 ? 'Net Profit (Books)' : 'Net Loss (Books)'} value={`₹ ${formatINR(Math.abs(acc.netProfit))}`} to="/accounting/reports" accent={acc.netProfit >= 0 ? '#5B9B36' : '#c0392b'} highlight={acc.netProfit < 0} />}
+        {acc && <KPI label="Cash & Bank" value={`₹ ${formatINR(acc.cashBank)}`} to="/accounting/ledgers" accent="#1f8f4e" />}
         <KPI label="Clients" value={d.clients} to="/clients" accent="#5B9B36" />
         <KPI label="Staff Present Today" value={`${d.presentToday} / ${d.employees}`} to="/staff" accent="#4f8fd5" />
-        <KPI label="Approvals Pending" value={d.approvalsPending} sub="leaves + expenses" to="/staff-approvals" accent={d.approvalsPending ? '#c0392b' : '#5B9B36'} />
-        <KPI label="Open Tasks" value={d.openTasks} to="/staff-tasks" accent="#e8a13b" />
-        <KPI label="Site Visits (open)" value={d.siteVisitsOpen} to="/site-visits" accent="#7d3cb5" />
-        <KPI label="Stock Items" value={d.stock.items} sub={d.stock.low ? `${d.stock.low} low stock` : 'all healthy'} to="/inventory" accent={d.stock.low ? '#c0392b' : '#5B9B36'} />
+        <KPI label="Approvals Pending" value={d.approvalsPending} sub="leaves + expenses" to="/staff-approvals" accent={d.approvalsPending ? '#c0392b' : '#5B9B36'} highlight={!!d.approvalsPending} />
+        <KPI label="Open Tasks" value={d.openTasks} to="/staff-tasks" accent="#e8a13b" highlight={!!d.openTasks} />
+        <KPI label="Site Visits (Open)" value={d.siteVisitsOpen} to="/site-visits" accent="#7d3cb5" />
+        <KPI label="Stock Items" value={d.stock.items} sub={d.stock.low ? `${d.stock.low} low stock` : 'all healthy'} to="/inventory" accent={d.stock.low ? '#c0392b' : '#5B9B36'} highlight={!!d.stock.low} />
         <KPI label="Vouchers in Books" value={d.vouchers} to="/accounting" accent="#2a6fb0" />
-        {acc && <KPI label={acc.netProfit >= 0 ? 'Net Profit (books)' : 'Net Loss (books)'} value={`₹ ${formatINR(Math.abs(acc.netProfit))}`} to="/accounting/reports" accent={acc.netProfit >= 0 ? '#5B9B36' : '#c0392b'} />}
-        {acc && <KPI label="Cash & Bank" value={`₹ ${formatINR(acc.cashBank)}`} to="/accounting/ledgers" accent="#1f8f4e" />}
       </div>
 
       {/* Today's site-visit outcomes — assign follow-ups as tasks in one click */}
       {d.todayVisitOutcomes?.length > 0 && (
-        <section className="fsec">
+        <section className="fsec" style={{ marginTop: 20 }}>
           <div className="fsec-head">
             <h3>Today's Site Visit Outcomes</h3>
             <button className="btn xs" onClick={() => nav('/site-visits')}>All visits →</button>
@@ -72,10 +80,10 @@ export default function Overview() {
         </section>
       )}
 
-      <div className="staff-grid">
+      <div className="dash-2col" style={{ marginTop: 20 }}>
         <section className="fsec">
           <div className="fsec-head">
-            <h3>To-do & Reminders</h3>
+            <h3>To-do &amp; Reminders</h3>
             <button className="btn xs" onClick={() => nav('/staff-tasks')}>Open Tasks →</button>
           </div>
           {d.todos.length === 0 ? <p className="subtle">Nothing pending — all clear! 🎉</p> : (
