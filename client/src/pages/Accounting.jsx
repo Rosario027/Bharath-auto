@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, exporter } from '../api.js';
+import { api } from '../api.js';
 import { formatINR } from '../utils/money.js';
 
 export const VTYPE_LABELS = {
@@ -18,14 +18,7 @@ export default function Accounting() {
   const [overview, setOverview] = useState(null);
   const [ovFrom, setOvFrom] = useState('');
   const [ovTo, setOvTo] = useState('');
-  const [ledgers, setLedgers] = useState([]);
-  const [bankLedgerId, setBankLedgerId] = useState('');
-  const [importErrors, setImportErrors] = useState(null);
-  const [txns, setTxns] = useState([]);
-  const [txnTab, setTxnTab] = useState('pending');
-  const [unpaid, setUnpaid] = useState([]);
-  const [bills, setBills] = useState([]);
-  const [catSel, setCatSel] = useState({}); // txnId -> { ledgerId, invoiceId }
+  const [pendingTxns, setPendingTxns] = useState(0);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const [toast, setToast] = useState(null);
@@ -43,80 +36,11 @@ export default function Accounting() {
     api.accOverview(p.length ? `?${p.join('&')}` : '').then(setOverview).catch(() => {});
   }, [ovFrom, ovTo, vouchers]);
   useEffect(() => {
-    api.accLedgers().then((l) => {
-      setLedgers(l);
-      const bank = l.find((x) => x.group?.name === 'Bank Accounts');
-      if (bank) setBankLedgerId(bank.id);
-    }).catch(() => {});
-  }, []);
-
-  const onBankFile = async (file) => {
-    if (!file) return;
-    if (!bankLedgerId) return flash('Pick the bank ledger first', 'err');
-    setBusy('import'); setImportErrors(null);
-    try {
-      const b64 = await new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(String(r.result).split(',')[1]);
-        r.onerror = reject;
-        r.readAsDataURL(file);
-      });
-      const res = await fetch('/api/accounting/bank-import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
-        body: JSON.stringify({ bankLedgerId: Number(bankLedgerId), dataBase64: b64 }),
-      });
-      const j = await res.json();
-      if (!res.ok) {
-        if (j.errors) setImportErrors(j.errors);
-        flash(j.error || 'Import failed', 'err');
-      } else {
-        flash(`Imported — ${j.posted} entry(ies) posted to the books`);
-        await load();
-      }
-    } catch (e) { flash(e.message, 'err'); }
-    finally { setBusy(''); }
-  };
+    api.bankTxns('pending').then((t) => setPendingTxns(t.length)).catch(() => {});
+  }, [vouchers]);
 
   const sortBy = (key) => setSort((s) => ({ key, dir: s.key === key && s.dir === 'desc' ? 'asc' : 'desc' }));
   const arrow = (key) => (sort.key === key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : '');
-
-  // ── Bank transaction categorization ──
-  const loadTxns = useCallback(async () => {
-    try {
-      const [t, inv, ob] = await Promise.all([api.bankTxns(), api.listInvoices().catch(() => []), api.openBills().catch(() => [])]);
-      setTxns(t);
-      setUnpaid(inv.filter((i) => i.docType === 'invoice' && i.status !== 'deleted' && (i.amountPaid || 0) < i.grandTotal - 0.5));
-      setBills(ob);
-    } catch { /* ignore */ }
-  }, []);
-  useEffect(() => { loadTxns(); }, [loadTxns, vouchers]);
-
-  const setSel = (id, patch) => setCatSel((p) => ({ ...p, [id]: { ...(p[id] || {}), ...patch } }));
-  const doCategorize = async (t, toSuspense = false) => {
-    const sel = catSel[t.id] || {};
-    setBusy(`t${t.id}`);
-    try {
-      if (sel.invoiceId && !toSuspense) {
-        const r = await api.mapTxnToInvoice(t.id, Number(sel.invoiceId));
-        flash(r.excess > 0 ? `Mapped — ₹${formatINR(r.applied)} settled, excess ₹${formatINR(r.excess)} parked in "To Be Verified"` : 'Mapped to invoice — AR settled');
-      } else if (sel.billId && !toSuspense) {
-        const r = await api.mapTxnToBill(t.id, Number(sel.billId));
-        flash(r.excess > 0 ? `Mapped — ₹${formatINR(r.applied)} paid against bill, excess ₹${formatINR(r.excess)} parked in "To Be Verified"` : 'Mapped to purchase bill — AP settled');
-      } else if (toSuspense) {
-        await api.categorizeTxn(t.id, { toSuspense: true });
-        flash('Parked in "To Be Verified" — categorise properly later');
-      } else {
-        if (!sel.ledgerId) return flash('Pick a ledger, an invoice or a purchase bill first', 'err');
-        await api.categorizeTxn(t.id, { ledgerId: Number(sel.ledgerId) });
-        flash('Categorised & posted to the books');
-      }
-      await Promise.all([loadTxns(), load()]);
-    } catch (e) { flash(e.message, 'err'); } finally { setBusy(''); }
-  };
-
-  const txnView = txns.filter((t) => (txnTab === 'pending' ? t.status === 'pending' : t.status !== 'pending'));
-  const tCount = (s) => txns.filter((t) => (s === 'pending' ? t.status === 'pending' : t.status !== 'pending')).length;
 
   const sync = async () => {
     setBusy('sync');
@@ -177,98 +101,11 @@ export default function Accounting() {
         </section>
       )}
 
-      {/* Bank statement import */}
-      <section className="fsec">
-        <div className="fsec-head">
-          <h3>Bank Statement Import <span className="hint">Excel</span></h3>
-          <button className="btn xs" onClick={() => exporter.bankTemplate().catch((e) => flash(e.message, 'err'))}>⬇ Download template</button>
-        </div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <label style={{ minWidth: 220 }}>Bank ledger to post against
-            <select value={bankLedgerId} onChange={(e) => setBankLedgerId(e.target.value)}>
-              {ledgers.filter((l) => ['Bank Accounts', 'Cash-in-Hand'].includes(l.group?.name)).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </select>
-          </label>
-          <label className="btn primary" style={{ cursor: 'pointer' }}>
-            {busy === 'import' ? 'Validating & posting…' : '⬆ Upload filled template'}
-            <input type="file" accept=".xlsx" style={{ display: 'none' }} disabled={busy === 'import'}
-              onChange={(e) => { onBankFile(e.target.files?.[0]); e.target.value = ''; }} />
-          </label>
-          <span className="subtle" style={{ fontSize: 12 }}>Money in → Receipt (Dr Bank), money out → Payment (Cr Bank). Invalid files are rejected with row-wise errors.</span>
-        </div>
-        {importErrors && (
-          <div className="import-errors">
-            <b>File rejected — fix these rows and re-upload:</b>
-            <table className="data-table" style={{ marginTop: 8 }}>
-              <thead><tr><th style={{ width: 70 }}>Row</th><th style={{ width: 180 }}>Issue category</th><th>Details</th></tr></thead>
-              <tbody>{importErrors.map((er, i) => <tr key={i}><td className="strong">#{er.row}</td><td><span className="badge rq-rejected">{er.category}</span></td><td>{er.issue}</td></tr>)}</tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      {/* Bank transaction categorization */}
-      {(
-        <section className="fsec">
-          <div className="fsec-head">
-            <h3>Bank Transactions · Categorization <span className="hint">AR / AP mapping</span></h3>
-            <div className="fsec-tools">
-              <button className={`seg-toggle ${txnTab === 'pending' ? 'on' : ''}`} onClick={() => setTxnTab('pending')}>Pending ({tCount('pending')})</button>
-              <button className={`seg-toggle ${txnTab === 'done' ? 'on' : ''}`} onClick={() => setTxnTab('done')}>Categorized ({tCount('done')})</button>
-            </div>
-          </div>
-          {txnView.length === 0 ? <p className="subtle">{txns.length === 0 ? 'No bank transactions yet — upload a bank statement above (leave the Ledger column blank to categorise here: map receipts to sales invoices, payments to purchase bills, or post to any ledger).' : txnTab === 'pending' ? 'Nothing pending — all transactions are categorised. ✓' : 'No categorised transactions yet.'}</p> : (
-            <table className="data-table">
-              <thead><tr><th>Date</th><th>Description</th><th className="r">In</th><th className="r">Out</th><th>Bank</th>{txnTab === 'pending' ? <th style={{ minWidth: 330 }}>Categorise as</th> : <th>Categorised as</th>}<th className="r">{txnTab === 'pending' ? 'Action' : 'Status'}</th></tr></thead>
-              <tbody>
-                {txnView.map((t) => {
-                  const sel = catSel[t.id] || {};
-                  return (
-                    <tr key={t.id}>
-                      <td>{t.date}</td>
-                      <td style={{ maxWidth: 240 }}>{t.description || '—'}</td>
-                      <td className="r" style={{ color: '#1f8f4e' }}>{t.credit ? formatINR(t.credit) : ''}</td>
-                      <td className="r" style={{ color: '#c0392b' }}>{t.debit ? formatINR(t.debit) : ''}</td>
-                      <td>{t.bankName}</td>
-                      {txnTab === 'pending' ? (
-                        <td>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            <select value={sel.ledgerId || ''} onChange={(e) => setSel(t.id, { ledgerId: e.target.value, invoiceId: '', billId: '' })}>
-                              <option value="">— Ledger (expense / income / cash…) —</option>
-                              {ledgers.filter((l) => l.id !== t.bankLedgerId).map((l) => <option key={l.id} value={l.id}>{l.name} ({l.group?.name})</option>)}
-                            </select>
-                            {t.credit > 0 && unpaid.length > 0 && (
-                              <select value={sel.invoiceId || ''} onChange={(e) => setSel(t.id, { invoiceId: e.target.value, ledgerId: '', billId: '' })}>
-                                <option value="">— or map to unpaid invoice (AR) —</option>
-                                {unpaid.map((i) => <option key={i.id} value={i.id}>{i.invoiceNo} · {i.buyerName} · ₹{formatINR(i.grandTotal - (i.amountPaid || 0))} due</option>)}
-                              </select>
-                            )}
-                            {t.debit > 0 && bills.length > 0 && (
-                              <select value={sel.billId || ''} onChange={(e) => setSel(t.id, { billId: e.target.value, ledgerId: '', invoiceId: '' })}>
-                                <option value="">— or map to purchase bill (AP) —</option>
-                                {bills.map((b) => <option key={b.id} value={b.id}>{b.voucherNo} · {b.creditor} · ₹{formatINR(b.outstanding)} due</option>)}
-                              </select>
-                            )}
-                          </div>
-                        </td>
-                      ) : (
-                        <td><b>{t.categorizedAs}</b>{t.status === 'partial' && <span className="badge rq-pending" style={{ marginLeft: 6 }}>excess parked</span>}</td>
-                      )}
-                      <td className="r">
-                        {txnTab === 'pending' ? (
-                          <div className="row-actions">
-                            <button className="btn xs primary" disabled={busy === `t${t.id}`} onClick={() => doCategorize(t)}>Post</button>
-                            <button className="btn xs" title="Park in To Be Verified (Suspense)" disabled={busy === `t${t.id}`} onClick={() => doCategorize(t, true)}>?</button>
-                          </div>
-                        ) : <span className={`badge ${t.status === 'partial' ? 'rq-pending' : 'rq-approved'}`}>{t.status}</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </section>
+      {/* Bank reconciliation pending alert */}
+      {pendingTxns > 0 && (
+        <button className="recon-alert" onClick={() => nav('/accounting/bank-recon')}>
+          🏦 <b>{pendingTxns}</b> bank transaction(s) waiting to be categorised — open Bank Reconciliation →
+        </button>
       )}
 
       <div className="stat-row">
