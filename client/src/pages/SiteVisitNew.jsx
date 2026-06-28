@@ -12,6 +12,9 @@ const blank = {
   leadSource: '', requirementSummary: '', productsDiscussed: '', homeTheatre: '',
   visitType: 'new', status: 'open', quotationNo: '', quotationValue: '', nextFollowUp: '',
   whoIsFollowing: '', probability: 25, remarks: '', employeeId: '',
+  visitCategory: 'lead_visit', itemsChecklist: '[]', othersNote: '',
+  keyPersonName: '', keyPersonRole: '', keyPersonPhone: '',
+  dimensions: '', estimatedCost: '', siteEvaluation: '',
 };
 
 const STEPS = ['Visit & Customer', 'Location & Site', 'Site Contacts', 'Lead & Requirement', 'Sales & Status'];
@@ -22,6 +25,8 @@ export default function SiteVisitNew() {
   const [v, setV] = useState({ ...blank });
   const [step, setStep] = useState(0);
   const [emps, setEmps] = useState([]);
+  const [inventory, setInventory] = useState([]);
+  const [checklist, setChecklist] = useState([]);
   const [busy, setBusy] = useState(false);
   const [geoBusy, setGeoBusy] = useState(false);
   const [toast, setToast] = useState(null);
@@ -29,6 +34,24 @@ export default function SiteVisitNew() {
   const set = (patch) => setV((p) => ({ ...p, ...patch }));
 
   useEffect(() => { if (isAdmin) api.listEmployees().then(setEmps).catch(() => {}); }, [isAdmin]);
+  useEffect(() => { api.listInventory().then(setInventory).catch(() => {}); }, []);
+
+  const toggleChecklistItem = (item) => {
+    setChecklist((prev) => {
+      const exists = prev.find((x) => x.id === item.id);
+      const updated = exists ? prev.filter((x) => x.id !== item.id) : [...prev, { id: item.id, name: item.name, qty: 1 }];
+      set({ itemsChecklist: JSON.stringify(updated) });
+      return updated;
+    });
+  };
+
+  const updateChecklistQty = (id, qty) => {
+    setChecklist((prev) => {
+      const updated = prev.map((x) => x.id === id ? { ...x, qty: Number(qty) || 1 } : x);
+      set({ itemsChecklist: JSON.stringify(updated) });
+      return updated;
+    });
+  };
 
   const useMyLocation = () => {
     if (!navigator.geolocation) return flash('Location not available on this device', 'err');
@@ -90,6 +113,19 @@ export default function SiteVisitNew() {
 
         {step === 0 && (
           <div className="grid2">
+            <label className="full">Visit Category
+              <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                {[['project_visit', '🏗 Project Visit', 'Existing project / installation follow-up'], ['lead_visit', '🎯 Lead Visit', 'New prospect / sales enquiry']].map(([val, label, hint]) => (
+                  <button key={val} type="button"
+                    className={`seg-toggle ${v.visitCategory === val ? 'on' : ''}`}
+                    style={{ flex: 1, padding: '10px 14px', textAlign: 'left', borderRadius: 8 }}
+                    onClick={() => set({ visitCategory: val })}>
+                    <div style={{ fontWeight: 600 }}>{label}</div>
+                    <div style={{ fontSize: 11, opacity: 0.7 }}>{hint}</div>
+                  </button>
+                ))}
+              </div>
+            </label>
             {isAdmin && (
               <label className="full">Assign to (sales executive)
                 <select value={v.employeeId} onChange={(e) => set({ employeeId: e.target.value })}>
@@ -162,6 +198,50 @@ export default function SiteVisitNew() {
             </label>
             <label className="full">Requirement Summary<textarea rows={3} value={v.requirementSummary} placeholder="What does the customer need?" onChange={(e) => set({ requirementSummary: e.target.value })} /></label>
             <label className="full">Products Discussed<textarea rows={2} value={v.productsDiscussed} placeholder="e.g. gate automation, sensors, home theatre…" onChange={(e) => set({ productsDiscussed: e.target.value })} /></label>
+
+            {v.visitCategory === 'project_visit' && inventory.length > 0 && (
+              <div className="full" style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 14 }}>
+                <b style={{ display: 'block', marginBottom: 8 }}>Items Checklist (from inventory)</b>
+                <p className="subtle" style={{ fontSize: 12, marginTop: 0 }}>Tick the items to be carried / verified at site.</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {inventory.map((item) => {
+                    const checked = checklist.find((x) => x.id === item.id);
+                    return (
+                      <label key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', border: `1px solid ${checked ? 'var(--brand-orange)' : '#e5e7eb'}`, borderRadius: 6, cursor: 'pointer', background: checked ? '#fef3ec' : '#fff', fontSize: 13 }}>
+                        <input type="checkbox" checked={!!checked} onChange={() => toggleChecklistItem(item)} />
+                        {item.name}
+                        {checked && (
+                          <input type="number" min="1" value={checked.qty} onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => updateChecklistQty(item.id, e.target.value)}
+                            style={{ width: 50, marginLeft: 4 }} />
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 13 }}>
+                  <input type="checkbox" onChange={(e) => {
+                    if (!e.target.checked) set({ othersNote: '' });
+                    else set({ othersNote: ' ' });
+                  }} />
+                  Others (specify below)
+                </label>
+                {(v.othersNote !== undefined && v.othersNote !== '') && (
+                  <input style={{ marginTop: 6 }} value={v.othersNote} placeholder="Describe other items…" onChange={(e) => set({ othersNote: e.target.value })} />
+                )}
+              </div>
+            )}
+
+            {v.visitCategory === 'project_visit' && (
+              <>
+                {L('Key Person Name', 'keyPersonName')}
+                {L('Key Person Role', 'keyPersonRole')}
+                {L('Key Person Phone', 'keyPersonPhone', { type: 'tel' })}
+                {L('Dimensions / Area', 'dimensions', { placeholder: 'e.g. 40×60 ft, 2400 sq.ft' })}
+                {L('Estimated Cost (₹)', 'estimatedCost', { type: 'number' })}
+                <label className="full">Site Evaluation<textarea rows={2} value={v.siteEvaluation} onChange={(e) => set({ siteEvaluation: e.target.value })} placeholder="Notes on site condition, access, power availability…" /></label>
+              </>
+            )}
           </div>
         )}
 

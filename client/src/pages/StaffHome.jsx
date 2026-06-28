@@ -58,14 +58,21 @@ export default function StaffHome() {
   const [leaveForm, setLeaveForm] = useState({ fromDate: '', toDate: '', reason: '' });
   const [expForm, setExpForm] = useState({ date: todayStr(), category: 'Travel', amount: '', description: '', receipt: null });
   const [taskEdits, setTaskEdits] = useState({});
+  const [deadlineReqTask, setDeadlineReqTask] = useState(null);
+  const [deadlineForm, setDeadlineForm] = useState({ proposedDate: '', reason: '' });
+  const [myDeadlineReqs, setMyDeadlineReqs] = useState([]);
   const [busy, setBusy] = useState('');
   const [toast, setToast] = useState(null);
   const flash = (msg, kind = 'ok') => { setToast({ msg, kind }); setTimeout(() => setToast(null), 3500); };
 
   const loadAll = useCallback(async () => {
     try {
-      const [p, t, l, x, ar] = await Promise.all([api.getMyProfile(), api.myTasks(), api.myLeaves(), api.myExpenses(), api.myAttendanceRequests().catch(() => [])]);
-      setProfile(p); setTasks(t); setLeaves(l); setExpenses(x); setAttReqs(ar);
+      const [p, t, l, x, ar, dr] = await Promise.all([
+        api.getMyProfile(), api.myTasks(), api.myLeaves(), api.myExpenses(),
+        api.myAttendanceRequests().catch(() => []),
+        api.myDeadlineRequests().catch(() => []),
+      ]);
+      setProfile(p); setTasks(t); setLeaves(l); setExpenses(x); setAttReqs(ar); setMyDeadlineReqs(dr);
     } catch (e) { flash(e.message, 'err'); }
   }, []);
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -82,8 +89,24 @@ export default function StaffHome() {
 
   const doClockIn = async () => {
     setBusy('in');
-    try { await api.clockIn(); await loadAll(); flash('Clocked in — have a great day!'); }
-    catch (e) { flash(e.message, 'err'); } finally { setBusy(''); }
+    try {
+      let lat = null, lng = null;
+      if (navigator.geolocation) {
+        await new Promise((res) => {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => { lat = pos.coords.latitude; lng = pos.coords.longitude; res(); },
+            () => res(), { enableHighAccuracy: true, timeout: 8000 }
+          );
+        });
+      }
+      const result = await api.clockIn(lat, lng);
+      await loadAll();
+      if (result?.geofence && !result.geofence.withinZone) {
+        flash(`⚠ Clocked in but you appear to be ${Math.round(result.geofence.nearestDistance || 0)}m outside the designated zone (${result.geofence.nearestZone || 'office'}). Admin has been notified.`, 'err');
+      } else {
+        flash('Clocked in — have a great day!');
+      }
+    } catch (e) { flash(e.message, 'err'); } finally { setBusy(''); }
   };
   const doClockOut = async () => {
     if (!summary.trim()) return flash('Add a brief description of today\'s work before clocking out', 'err');
@@ -156,9 +179,37 @@ export default function StaffHome() {
 
   const newTasks = tasks.filter((t) => t.status === 'assigned').length;
 
+  const submitDeadlineReq = async () => {
+    if (!deadlineForm.proposedDate || !deadlineForm.reason.trim()) return flash('Proposed date and reason are required', 'err');
+    setBusy('dlreq');
+    try {
+      await api.requestDeadlineChange({ taskId: deadlineReqTask.id, proposedDate: deadlineForm.proposedDate, reason: deadlineForm.reason });
+      flash('Deadline change request sent to admin');
+      setDeadlineReqTask(null);
+      await loadAll();
+    } catch (e) { flash(e.message, 'err'); } finally { setBusy(''); }
+  };
+
   return (
     <div className="page">
       {toast && <div className={`toast ${toast.kind}`}>{toast.msg}</div>}
+
+      {deadlineReqTask && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="fsec" style={{ background: '#fff', padding: 24, borderRadius: 10, minWidth: 340, maxWidth: 480 }}>
+            <h3 style={{ marginTop: 0 }}>Request Deadline Change</h3>
+            <p style={{ fontSize: 13 }}><b>{deadlineReqTask.title}</b><br />Current due date: <b>{fmtDate(deadlineReqTask.dueDate)}</b></p>
+            <label>Proposed New Date *<input type="date" value={deadlineForm.proposedDate} onChange={(e) => setDeadlineForm((p) => ({ ...p, proposedDate: e.target.value }))} /></label>
+            <label style={{ display: 'block', marginTop: 10 }}>Reason / Justification *
+              <textarea rows={3} value={deadlineForm.reason} onChange={(e) => setDeadlineForm((p) => ({ ...p, reason: e.target.value }))} placeholder="Why do you need more time? Describe blockers…" />
+            </label>
+            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+              <button className="btn primary" onClick={submitDeadlineReq} disabled={busy === 'dlreq'}>{busy === 'dlreq' ? 'Sending…' : 'Send Request'}</button>
+              <button className="btn" onClick={() => setDeadlineReqTask(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
       <header className="page-head">
         <div>
           <h1>My Workspace</h1>
@@ -258,11 +309,20 @@ export default function StaffHome() {
                     <div className="task-meta">Assigned by {t.assignedBy} · {new Date(t.createdAt).toLocaleDateString('en-IN')}{t.dueDate ? ` · Due ${fmtDate(t.dueDate)}` : ''}</div>
                   </div>
                   <div className="task-side">
-                    <select value={status} onChange={(e) => editTask(t.id, { status: e.target.value })}>
+                    <select value={status} disabled={t.status === 'pending_deadline_approval'}
+                      onChange={(e) => editTask(t.id, { status: e.target.value })}>
                       {Object.entries(TASK_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                     <textarea rows={2} placeholder="Add your comments on this work…" value={edit.staffComment ?? t.staffComment} onChange={(e) => editTask(t.id, { staffComment: e.target.value })} />
-                    <button className="btn xs primary" disabled={busy === `task${t.id}` || !taskEdits[t.id]} onClick={() => saveTask(t)}>Save update</button>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn xs primary" disabled={busy === `task${t.id}` || !taskEdits[t.id] || t.status === 'pending_deadline_approval'} onClick={() => saveTask(t)}>Save update</button>
+                      {t.dueDate && t.status !== 'completed' && t.status !== 'pending_deadline_approval' && (
+                        <button className="btn xs" onClick={() => { setDeadlineReqTask(t); setDeadlineForm({ proposedDate: '', reason: '' }); }}>Request date change</button>
+                      )}
+                    </div>
+                    {t.status === 'pending_deadline_approval' && (
+                      <div className="subtle" style={{ fontSize: 12, color: '#b9651a' }}>⏳ Deadline change pending admin approval</div>
+                    )}
                   </div>
                 </div>
               );

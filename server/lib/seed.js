@@ -77,6 +77,22 @@ export async function fixInvoiceStatuses() {
   if (n.count > 0) console.log(`[seed] ${n.count} invoice(s) migrated draft/finalized → issued.`);
 }
 
+const DEFAULT_PAYMENT_TERMS = [
+  { label: 'Immediate / COD', sortOrder: 0 },
+  { label: 'Net 15', sortOrder: 1 },
+  { label: 'Net 30', sortOrder: 2 },
+  { label: 'Net 60', sortOrder: 3 },
+  { label: '50% Advance / 50% Upon Delivery', sortOrder: 4 },
+];
+
+export async function ensurePaymentTerms() {
+  const count = await prisma.paymentTerm.count();
+  if (count === 0) {
+    await prisma.paymentTerm.createMany({ data: DEFAULT_PAYMENT_TERMS });
+    console.log('[seed] Default payment terms created.');
+  }
+}
+
 export async function seed() {
   const existing = await prisma.companySettings.findUnique({ where: { id: 1 } });
   if (existing) {
@@ -85,6 +101,7 @@ export async function seed() {
     await ensureLoginQuotes();
     await ensureUsers();
     await fixInvoiceStatuses();
+    await ensurePaymentTerms();
     return existing;
   }
 
@@ -124,6 +141,7 @@ export async function seed() {
   await ensureDefaultSeries(settings);
   await ensureLoginQuotes();
   await ensureUsers();
+  await ensurePaymentTerms();
   return settings;
 }
 

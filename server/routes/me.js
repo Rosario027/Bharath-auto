@@ -58,6 +58,27 @@ router.get('/attendance', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Haversine distance in metres between two GPS coordinates
+function haversineMetres(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+async function checkGeofence(lat, lng) {
+  if (!lat || !lng) return { withinZone: false, nearestZone: null, distanceM: null };
+  const zones = await prisma.geofenceZone.findMany({ where: { active: true } });
+  let nearest = null, minDist = Infinity;
+  for (const z of zones) {
+    const d = haversineMetres(lat, lng, z.lat, z.lng);
+    if (d < minDist) { minDist = d; nearest = z; }
+  }
+  if (!nearest) return { withinZone: true, nearestZone: null, distanceM: null }; // no zones = unrestricted
+  return { withinZone: minDist <= nearest.radiusM, nearestZone: nearest.name, distanceM: Math.round(minDist) };
+}
+
 // ── Clock in ──
 router.post('/clock-in', async (req, res, next) => {
   try {
@@ -66,12 +87,27 @@ router.post('/clock-in', async (req, res, next) => {
     const d = localDate();
     const existing = await prisma.attendance.findUnique({ where: { employeeId_date: { employeeId: emp.id, date: d } } });
     if (existing?.clockIn) return res.status(400).json({ error: 'Already clocked in today.' });
+
+    // Geofence check (BRD §3.2)
+    const lat = req.body?.lat ? parseFloat(req.body.lat) : null;
+    const lng = req.body?.lng ? parseFloat(req.body.lng) : null;
+    const { withinZone, nearestZone, distanceM } = await checkGeofence(lat, lng);
+
+    // Fetch geofence enforcement setting (if blockOutsideZone = true, reject; else flag)
+    const settings = await prisma.companySettings.findUnique({ where: { id: 1 }, select: { id: true } }).catch(() => null);
+    // We'll store as 'unverified' flag in the manual field for now (can be enhanced with a dedicated field)
+    const flaggedOutside = !withinZone && lat !== null;
+
     const rec = await prisma.attendance.upsert({
       where: { employeeId_date: { employeeId: emp.id, date: d } },
-      create: { employeeId: emp.id, date: d, present: true, clockIn: new Date() },
-      update: { present: true, clockIn: new Date(), manual: false },
+      create: { employeeId: emp.id, date: d, present: true, clockIn: new Date(), manual: flaggedOutside },
+      update: { present: true, clockIn: new Date(), manual: flaggedOutside },
     });
-    res.json(rec);
+
+    res.json({
+      ...rec,
+      geofence: { withinZone, nearestZone, distanceM, flaggedOutside },
+    });
   } catch (e) { next(e); }
 });
 
@@ -250,6 +286,7 @@ router.put('/tasks/:id', async (req, res, next) => {
     if (!task) return res.status(404).json({ error: 'Task not found' });
     const b = req.body || {};
     const data = {};
+    // BRD §6.1: staff cannot edit dueDate directly
     if (b.status !== undefined) {
       if (!['assigned', 'processing', 'completed'].includes(b.status)) return res.status(400).json({ error: 'Invalid status' });
       data.status = b.status;
@@ -257,6 +294,52 @@ router.put('/tasks/:id', async (req, res, next) => {
     if (b.staffComment !== undefined) data.staffComment = String(b.staffComment);
     const updated = await prisma.staffTask.update({ where: { id: task.id }, data });
     res.json(updated);
+  } catch (e) { next(e); }
+});
+
+// ── Task Deadline Change Requests (BRD §6.1) ──
+router.get('/task-deadline-requests', async (req, res, next) => {
+  try {
+    const emp = await myEmployee(req, res);
+    if (!emp) return;
+    const requests = await prisma.taskDeadlineRequest.findMany({
+      where: { employeeId: emp.id },
+      orderBy: { createdAt: 'desc' },
+      include: { task: { select: { id: true, title: true, dueDate: true } } },
+    });
+    res.json(requests);
+  } catch (e) { next(e); }
+});
+
+router.post('/task-deadline-requests', async (req, res, next) => {
+  try {
+    const emp = await myEmployee(req, res);
+    if (!emp) return;
+    const { taskId, proposedDate, reason } = req.body || {};
+    if (!taskId) return res.status(400).json({ error: 'Task ID is required' });
+    if (!proposedDate) return res.status(400).json({ error: 'Proposed date is required' });
+    if (!(reason || '').trim()) return res.status(400).json({ error: 'Reason is required' });
+
+    const task = await prisma.staffTask.findFirst({ where: { id: Number(taskId), employeeId: emp.id } });
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+    if (task.status === 'completed') return res.status(400).json({ error: 'Cannot request deadline change for a completed task' });
+
+    const reqRow = await prisma.$transaction(async (tx) => {
+      const dr = await tx.taskDeadlineRequest.create({
+        data: {
+          taskId: task.id,
+          employeeId: emp.id,
+          originalDate: task.dueDate || '',
+          proposedDate,
+          reason: reason.trim(),
+          status: 'pending',
+        },
+      });
+      // Lock the task into pending_deadline_approval status
+      await tx.staffTask.update({ where: { id: task.id }, data: { status: 'pending_deadline_approval' } });
+      return dr;
+    });
+    res.status(201).json(reqRow);
   } catch (e) { next(e); }
 });
 

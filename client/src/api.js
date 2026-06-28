@@ -72,7 +72,6 @@ export const api = {
   listInvoices: (q = '') => req(`/invoices${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   getInvoice: (id) => req(`/invoices/${id}`),
   nextNumber: (seriesId, docType) => req(`/invoices/next-number?${seriesId ? `seriesId=${seriesId}&` : ''}docType=${docType || 'invoice'}`),
-  staffSalary: (employeeId, month) => req(`/staff-admin/salary/${employeeId}?month=${month}`),
   createInvoice: (data) => req('/invoices', { method: 'POST', body: JSON.stringify(data) }),
   updateInvoice: (id, data) => req(`/invoices/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteInvoice: (id) => req(`/invoices/${id}`, { method: 'DELETE' }),
@@ -104,7 +103,7 @@ export const api = {
   // staff self-service (logged-in staff member, own data only)
   getMyProfile: () => req('/me/profile'),
   getMyAttendance: (month) => req(`/me/attendance${month ? `?month=${month}` : ''}`),
-  clockIn: () => req('/me/clock-in', { method: 'POST' }),
+  clockIn: (lat, lng) => req('/me/clock-in', { method: 'POST', body: JSON.stringify({ lat, lng }) }),
   clockOut: (workSummary) => req('/me/clock-out', { method: 'POST', body: JSON.stringify({ workSummary }) }),
   markFullDay: (workSummary, date) => req('/me/full-day', { method: 'POST', body: JSON.stringify({ workSummary, date }) }),
   myLeaves: () => req('/me/leaves'),
@@ -191,6 +190,74 @@ export const api = {
   createCustomer: (data) => req('/customers', { method: 'POST', body: JSON.stringify(data) }),
   updateCustomer: (id, data) => req(`/customers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteCustomer: (id) => req(`/customers/${id}`, { method: 'DELETE' }),
+  searchCustomers: (q) => req(`/customers/search?q=${encodeURIComponent(q)}`),
+  getCustomerOutstanding: (id) => req(`/customers/${id}/outstanding`),
+
+  // payment terms (BRD §1.3)
+  listPaymentTerms: (params = '') => req(`/payment-terms${params}`),
+  createPaymentTerm: (data) => req('/payment-terms', { method: 'POST', body: JSON.stringify(data) }),
+  updatePaymentTerm: (id, data) => req(`/payment-terms/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deletePaymentTerm: (id) => req(`/payment-terms/${id}`, { method: 'DELETE' }),
+
+  // delivery challans (BRD §1.1)
+  listDeliveryChallans: (params = '') => req(`/delivery-challans${params}`),
+  getDeliveryChallan: (id) => req(`/delivery-challans/${id}`),
+  createDeliveryChallan: (data) => req('/delivery-challans', { method: 'POST', body: JSON.stringify(data) }),
+  updateDeliveryChallan: (id, data) => req(`/delivery-challans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  // RMA (BRD §5.1)
+  listRma: (params = '') => req(`/rma${params}`),
+  getRma: (id) => req(`/rma/${id}`),
+  createRma: (data) => req('/rma', { method: 'POST', body: JSON.stringify(data) }),
+  updateRma: (id, data) => req(`/rma/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  resolveRma: (id, data) => req(`/rma/${id}/resolve`, { method: 'POST', body: JSON.stringify(data) }),
+
+  // business assets (BRD §5.2)
+  listBusinessAssets: (params = '') => req(`/business-assets${params}`),
+  getBusinessAsset: (id) => req(`/business-assets/${id}`),
+  getBusinessAssetHistory: (id) => req(`/business-assets/${id}/history`),
+  createBusinessAsset: (data) => req('/business-assets', { method: 'POST', body: JSON.stringify(data) }),
+  updateBusinessAsset: (id, data) => req(`/business-assets/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  checkoutAsset: (id, data) => req(`/business-assets/${id}/checkout`, { method: 'POST', body: JSON.stringify(data) }),
+  checkinAsset: (id, data) => req(`/business-assets/${id}/checkin`, { method: 'POST', body: JSON.stringify(data) }),
+
+  // staff goals / career development (BRD §4.2)
+  listGoals: (params = '') => req(`/staff-goals${params}`),
+  getMyGoals: () => req('/staff-goals/my'),
+  createGoal: (data) => req('/staff-goals', { method: 'POST', body: JSON.stringify(data) }),
+  updateGoal: (id, data) => req(`/staff-goals/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteGoal: (id) => req(`/staff-goals/${id}`, { method: 'DELETE' }),
+
+  // feedback (BRD §4.3)
+  submitFeedback: (data) => req('/feedback', { method: 'POST', body: JSON.stringify(data) }),
+  listFeedback: (params = '') => req(`/feedback${params}`),
+  markFeedbackRead: (id) => req(`/feedback/${id}/read`, { method: 'PUT' }),
+  markAllFeedbackRead: () => req('/feedback/mark-all-read', { method: 'PUT' }),
+
+  // task deadline requests (BRD §6.1)
+  myDeadlineRequests: () => req('/me/task-deadline-requests'),
+  requestDeadlineChange: (data) => req('/me/task-deadline-requests', { method: 'POST', body: JSON.stringify(data) }),
+  adminDeadlineRequests: (params = '') => req(`/staff-admin/deadline-requests${params}`),
+  decideDeadlineRequest: (id, data) => req(`/staff-admin/deadline-requests/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  // salary slip (BRD §3.3)
+  staffSalary: (employeeId, month) => req(`/staff-admin/salary/${employeeId}?month=${month}`),
+
+  // employee extended (BRD §4.1)
+  setEmployeePhoto: (id, dataUrl, type) => req(`/employees/${id}/photo`, { method: 'PUT', body: JSON.stringify({ dataUrl, type }) }),
+  addInsuranceDoc: (id, dataUrl) => req(`/employees/${id}/insurance-docs`, { method: 'POST', body: JSON.stringify({ dataUrl }) }),
+  removeInsuranceDoc: (id, idx) => req(`/employees/${id}/insurance-docs/${idx}`, { method: 'DELETE' }),
+  addAcademicDoc: (id, dataUrl) => req(`/employees/${id}/academic-docs`, { method: 'POST', body: JSON.stringify({ dataUrl }) }),
+  removeAcademicDoc: (id, idx) => req(`/employees/${id}/academic-docs/${idx}`, { method: 'DELETE' }),
+
+  // geofence (BRD §3.2)
+  geofenceZones: () => req('/staff-admin/geofence-zones'),
+  createGeofenceZone: (data) => req('/staff-admin/geofence-zones', { method: 'POST', body: JSON.stringify(data) }),
+  updateGeofenceZone: (id, data) => req(`/staff-admin/geofence-zones/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteGeofenceZone: (id) => req(`/staff-admin/geofence-zones/${id}`, { method: 'DELETE' }),
+
+  // site visit with category support (BRD §2.1)
+  listSiteVisitsByCategory: (category, status) => req(`/site-visits?visitCategory=${category}${status ? `&status=${status}` : ''}`),
 };
 
 // File downloads (PDF / Word) — trigger a browser download from a blob.
@@ -236,6 +303,7 @@ export const exporter = {
   docx: (invoice) => downloadBlob('/export/docx', invoice, `${invoice.invoiceNo || 'invoice'}.docx`),
   pdfById: (id, name) => downloadGet(`/export/${id}/pdf`, name || `invoice-${id}.pdf`),
   docxById: (id, name) => downloadGet(`/export/${id}/docx`, name || `invoice-${id}.docx`),
+  tripleCopyById: (id, name) => downloadGet(`/export/${id}/triple-copy`, name || `invoice-${id}-3copy.pdf`),
   salesReport: (from, to) => downloadGet(`/reports/sales?from=${from}&to=${to}`, 'GST-Sales.xlsx'),
   bankTemplate: () => downloadGet('/accounting/bank-template', 'Bank-Import-Template.xlsx'),
   ledgerStatementXlsx: (id, name) => downloadGet(`/accounting/ledgers/${id}/statement.xlsx`, name || 'Ledger.xlsx'),
@@ -244,6 +312,7 @@ export const exporter = {
   fullBackup: () => downloadGet('/backup', 'Bharath-Backup.zip'),
   employeeReport: (month) => downloadGet(`/reports/employees?month=${month}`, 'Employee-Report.xlsx'),
   stockReport: (from, to) => downloadGet(`/reports/stock?from=${from}&to=${to}`, 'Stock-Report.xlsx'),
+  salarySlip: (employeeId, month) => downloadGet(`/staff-admin/salary/${employeeId}/slip?month=${month}`, `SalarySlip-${employeeId}-${month}.pdf`),
 };
 
 export default api;

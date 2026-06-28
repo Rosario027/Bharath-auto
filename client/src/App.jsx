@@ -27,6 +27,11 @@ import AccBankRecon from './pages/AccBankRecon.jsx';
 import AccPurchases from './pages/AccPurchases.jsx';
 import AccReports from './pages/AccReports.jsx';
 import AccAssets from './pages/AccAssets.jsx';
+import DeliveryChallan from './pages/DeliveryChallan.jsx';
+import RMA from './pages/RMA.jsx';
+import BusinessAssets from './pages/BusinessAssets.jsx';
+import StaffGoals from './pages/StaffGoals.jsx';
+import StaffFeedback from './pages/StaffFeedback.jsx';
 
 // ── 60-min inactivity logout with a 30-second "continue?" warning ──
 const IDLE_LIMIT_MS = 60 * 60 * 1000;
@@ -180,6 +185,8 @@ function Sidebar({ onNavigate, isAdmin, isStaff, user }) {
             <div className="nav-sub">
               {sub(isStaff ? '/invoices' : '/', 'Dashboard', true)}
               {sub('/new', 'New Invoice')}
+              {isAdmin && sub('/delivery-challans', 'Delivery Challans')}
+              {isAdmin && sub('/rma', 'RMA')}
               {isAdmin && sub('/settings', 'Invoice Settings')}
             </div>
           )}
@@ -213,9 +220,24 @@ function Sidebar({ onNavigate, isAdmin, isStaff, user }) {
                 {sub('/staff', 'Employees', true)}
                 {sub('/staff-tasks', 'Tasks')}
                 {sub('/staff-approvals', 'Approvals')}
+                {sub('/business-assets', 'Business Assets')}
+                {sub('/staff-goals', 'Career Goals')}
+                {sub('/staff-feedback', 'Feedback')}
               </div>
             )}
           </div>
+        )}
+        {isStaff && (
+          <NavLink to="/staff-goals" onClick={onNavigate} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
+            <span className="nav-icon"><IcChart /></span>
+            <span className="nav-label">My Goals</span>
+          </NavLink>
+        )}
+        {isStaff && (
+          <NavLink to="/staff-feedback" onClick={onNavigate} className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}>
+            <span className="nav-icon"><IcUser /></span>
+            <span className="nav-label">Share Feedback</span>
+          </NavLink>
         )}
         {can('accounting') && (
         <div className="nav-group">
@@ -390,6 +412,11 @@ export default function App() {
                 <Route path="/accounting/purchases" element={<AccPurchases />} />
                 <Route path="/accounting/reports" element={<AccReports />} />
                 <Route path="/accounting/assets" element={<AccAssets />} />
+                <Route path="/delivery-challans" element={<AdminOnly><DeliveryChallan /></AdminOnly>} />
+                <Route path="/rma" element={<AdminOnly><RMA /></AdminOnly>} />
+                <Route path="/business-assets" element={<AdminOnly><BusinessAssets /></AdminOnly>} />
+                <Route path="/staff-goals" element={<StaffGoals />} />
+                <Route path="/staff-feedback" element={<StaffFeedback />} />
                 <Route path="/app-settings" element={<AdminOnly><AppSettings /></AdminOnly>} />
                 <Route path="/account" element={<AccountSettings />} />
                 <Route path="*" element={<Navigate to="/" replace />} />

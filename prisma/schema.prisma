@@ -141,6 +141,24 @@ model Employee {
   sunOff        Boolean @default(true)  // Sunday is a weekly off
   sunMultiplier Float   @default(2)     // pay multiplier when working on an off-day
   active          Boolean   @default(true)
+
+  // Extended profile fields (BRD §4.1)
+  photoUrl        String?   // individual photograph (data URL)
+  familyPhotoUrl  String?   // family group photograph (data URL)
+  insuranceDocs   String[]  @default([]) // array of data URLs
+  academicDocs    String[]  @default([]) // mark sheets, certs, degrees (data URLs)
+
+  // Address details
+  permanentAddress String   @default("")
+  currentAddress   String   @default("")
+  familyLocationAddress String @default("")
+  familyLocationLat Float?
+  familyLocationLng Float?
+
+  // Talent origin sourcing
+  referredByType       String  @default("") // walk-in | campus | referral
+  referredByEmployeeId Int?    // valid Employee.id when referredByType = referral
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   attendance      Attendance[]
@@ -149,6 +167,9 @@ model Employee {
   tasks           StaffTask[]
   siteVisits      SiteVisit[]
   attendanceRequests AttendanceRequest[]
+  goals           StaffGoal[]
+  businessAssets  BusinessAsset[]
+  deadlineRequests TaskDeadlineRequest[]
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -190,12 +211,33 @@ model SiteVisit {
   builderPhone         String @default("")
   electricalContractor String @default("")
 
+  // Visit category (BRD §2.1 split)
+  visitCategory String @default("lead_visit") // project_visit | lead_visit
+
   // Lead & requirement
   leadSource         String @default("")
   projectType        String @default("")
   requirementSummary String @default("")
   productsDiscussed  String @default("")
-  homeTheatre        String @default("") // Yes | No
+  homeTheatre        String @default("") // Yes | No (legacy, kept for migration)
+
+  // Dynamic item checklist (JSON array of {itemId, itemName, checked})
+  itemsChecklist String @default("[]")
+  othersNote     String @default("") // free-text when 'Others' is checked
+
+  // Resource allocation (BRD §2.2)
+  siteVisitLeads    String @default("[]") // JSON array of employee ids/names
+  technicalPersonnel String @default("[]") // JSON array of employee ids/names
+
+  // Key person details (BRD §2.2) — bubbles up to Customer
+  keyPersonName  String @default("")
+  keyPersonRole  String @default("") // Business Owner | MD | Architect …
+  keyPersonPhone String @default("")
+
+  // Lead visit specific (BRD §2.1)
+  dimensions        String @default("") // preliminary site dimensions
+  estimatedCost     Float  @default(0)
+  siteEvaluation    String @default("")
 
   // Sales pipeline (latest state — synced from the newest tranche)
   visitType      String  @default("new") // new | follow up
@@ -286,11 +328,12 @@ model StaffTask {
   description  String    @default("")
   dueDate      String?   // yyyy-mm-dd
   priority     String    @default("medium") // low | medium | high
-  status       String    @default("assigned") // assigned (yet to be taken) | processing | completed
+  status       String    @default("assigned") // assigned | processing | completed | pending_deadline_approval
   staffComment String    @default("")
   assignedBy   String    @default("Admin")
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+  deadlineRequests TaskDeadlineRequest[]
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -335,6 +378,7 @@ model AccVoucher {
   editCount       Int      @default(0)
   lines           AccVoucherLine[]
   edits           AccVoucherEdit[]
+  rmaTicket       RmaTicket?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
@@ -423,17 +467,18 @@ model Session {
 // Inventory / stock — managed by admin and accountant; invoice lines can
 // optionally draw from stock (deducted on save, restored by credit notes).
 model InventoryItem {
-  id        Int      @id @default(autoincrement())
-  name      String
-  sku       String   @default("")
-  hsnCode   String   @default("")
-  quantity  Float    @default(0)
-  unit      String   @default("Nos")
-  location  String   @default("")
-  notes     String   @default("")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  movements StockMovement[]
+  id              Int      @id @default(autoincrement())
+  name            String
+  sku             String   @default("")
+  hsnCode         String   @default("")
+  quantity        Float    @default(0)
+  transitQuantity Float    @default(0) // quantity in DC transit (dispatched_but_not_billed)
+  unit            String   @default("Nos")
+  location        String   @default("")
+  notes           String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  movements       StockMovement[]
 }
 
 model StockMovement {
@@ -457,6 +502,7 @@ model Customer {
   stateCode     String    @default("")
   createdAt     DateTime  @default(now())
   invoices      Invoice[]
+  rmaTickets    RmaTicket[]
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -515,6 +561,8 @@ model Invoice {
 
   items InvoiceItem[]
   edits InvoiceEdit[]
+  deliveryChallans DeliveryChallan[]
+  rmaTickets       RmaTicket[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -544,6 +592,198 @@ model InvoiceItem {
   gstInclusive Boolean @default(false) // true => entered price already includes GST
   inventoryItemId Int? // optional stock link — deducts on save
   total       Float   @default(0)
+}
+
+// ──────────────────────────────────────────────────────────────
+// PAYMENT TERMS — predefined dropdown options, admin-managed.
+// Seeded with standard options on first boot.
+// ──────────────────────────────────────────────────────────────
+model PaymentTerm {
+  id        Int      @id @default(autoincrement())
+  label     String   @unique // e.g. "Net 30"
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+// ──────────────────────────────────────────────────────────────
+// DELIVERY CHALLAN — generated from an invoice for dispatch.
+// Inventory moves to transit state when DC is created.
+// ──────────────────────────────────────────────────────────────
+model DeliveryChallan {
+  id        Int     @id @default(autoincrement())
+  dcNo      String  @unique @default("") // DC-0001 …
+  invoiceId Int?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  // Dispatch details
+  transporterName  String @default("")
+  vehicleNo        String @default("")
+  ewayBillNo       String @default("")
+  dispatchLocation String @default("")
+  dispatchDate     String @default("") // yyyy-mm-dd
+
+  // Customer snapshot
+  buyerName        String @default("")
+  buyerAddress     String @default("")
+
+  status    String @default("open") // open | delivered | cancelled
+
+  items     DeliveryChallanItem[]
+
+  createdBy String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DeliveryChallanItem {
+  id           Int             @id @default(autoincrement())
+  challanId    Int
+  challan      DeliveryChallan @relation(fields: [challanId], references: [id], onDelete: Cascade)
+  description  String
+  hsnCode      String  @default("")
+  qty          Float   @default(1)
+  unit         String  @default("Nos")
+  inventoryItemId Int?
+}
+
+// ──────────────────────────────────────────────────────────────
+// RMA — Return Material Assessment.
+// Full lifecycle: initiation → evaluation → resolution.
+// ──────────────────────────────────────────────────────────────
+model RmaTicket {
+  id         Int      @id @default(autoincrement())
+  rmaNo      String   @unique @default("") // RMA-0001 …
+  invoiceId  Int?
+  invoice    Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  customerId Int?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  status     String   @default("pending") // pending | under_inspection | replacement | repair | scrapped | closed
+
+  // Evaluation notes
+  qaFindings      String @default("")
+  resolutionRoute String @default("") // replacement | repair | scrap
+
+  // Linked outputs
+  replacementStockNote String @default("")
+  creditNoteId         Int?   @unique // if scrapped → linked credit note voucher
+  creditNote           AccVoucher? @relation(fields: [creditNoteId], references: [id])
+
+  items     RmaItem[]
+
+  raisedBy  String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RmaItem {
+  id           Int       @id @default(autoincrement())
+  ticketId     Int
+  ticket       RmaTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  description  String
+  qty          Float     @default(1)
+  unit         String    @default("Nos")
+  issueDetails String    @default("")
+  inventoryItemId Int?
+}
+
+// ──────────────────────────────────────────────────────────────
+// BUSINESS ASSETS — standard (long-term) and demo (short-term).
+// ──────────────────────────────────────────────────────────────
+model BusinessAsset {
+  id              Int       @id @default(autoincrement())
+  name            String
+  assetCode       String    @default("")
+  assetType       String    @default("standard") // standard | demo
+  category        String    @default("") // Laptop | Desktop | Vehicle | Demo Unit …
+  description     String    @default("")
+  purchaseDate    String    @default("") // yyyy-mm-dd
+  cost            Float     @default(0)
+  depRate         Float     @default(15) // % per annum (standard assets)
+  status          String    @default("available") // available | allocated | in_demo | maintenance | disposed
+
+  // Current custodian
+  assignedEmployeeId Int?
+  assignedEmployee   Employee? @relation(fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
+
+  history BusinessAssetHistory[]
+
+  notes     String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BusinessAssetHistory {
+  id         Int           @id @default(autoincrement())
+  assetId    Int
+  asset      BusinessAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  action     String        @default("") // allocated | returned | sent_for_repair | disposed
+  fromEmployeeId Int?
+  toEmployeeId   Int?
+  notes      String   @default("")
+  byUsername String   @default("")
+  createdAt  DateTime @default(now())
+}
+
+// ──────────────────────────────────────────────────────────────
+// STAFF GOALS & CAREER DEVELOPMENT
+// ──────────────────────────────────────────────────────────────
+model StaffGoal {
+  id          Int       @id @default(autoincrement())
+  employeeId  Int
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  title       String
+  description String    @default("")
+  kpis        String    @default("") // JSON array of KPI strings
+  targetDate  String    @default("") // yyyy-mm-dd
+  progress    Float     @default(0)  // 0–100 %
+  evidenceUrl String    @default("") // data URL or file reference
+  status      String    @default("active") // active | completed | cancelled
+  assignedBy  String    @default("")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// ──────────────────────────────────────────────────────────────
+// STAFF FEEDBACK (anonymous internal suggestions loop)
+// ──────────────────────────────────────────────────────────────
+model StaffFeedback {
+  id        Int      @id @default(autoincrement())
+  category  String   @default("general") // suggestion | feedback | complaint | general
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// ──────────────────────────────────────────────────────────────
+// TASK DEADLINE CHANGE REQUESTS
+// ──────────────────────────────────────────────────────────────
+model TaskDeadlineRequest {
+  id           Int       @id @default(autoincrement())
+  taskId       Int
+  task         StaffTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  employeeId   Int
+  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  originalDate String    @default("") // yyyy-mm-dd (the date before the request)
+  proposedDate String    // yyyy-mm-dd
+  reason       String
+  status       String    @default("pending") // pending | approved | rejected
+  adminComment String    @default("")
+  createdAt    DateTime  @default(now())
+}
+
+// ──────────────────────────────────────────────────────────────
+// GEOFENCE ZONES — admin-configurable attendance locations
+// ──────────────────────────────────────────────────────────────
+model GeofenceZone {
+  id        Int      @id @default(autoincrement())
+  name      String   // "Head Office" | "Project Site A" …
+  lat       Float
+  lng       Float
+  radiusM   Float    @default(200) // metres
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
 }
 
 // ──────────────────────────────────────────────────────────────

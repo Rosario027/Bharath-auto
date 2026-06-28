@@ -82,4 +82,77 @@ router.delete('/:id', async (req, res, next) => {
   }
 });
 
+// Financial health preview — outstanding invoices for a customer
+router.get('/:id/outstanding', async (req, res, next) => {
+  try {
+    const customer = await prisma.customer.findUnique({
+      where: { id: Number(req.params.id) },
+      select: { id: true, name: true },
+    });
+    if (!customer) return res.status(404).json({ error: 'Client not found' });
+
+    const invoices = await prisma.invoice.findMany({
+      where: {
+        customerId: customer.id,
+        status: 'issued',
+        grandTotal: { gt: 0 },
+      },
+      orderBy: { invoiceDate: 'asc' },
+      select: {
+        id: true, invoiceNo: true, invoiceDate: true, paymentTerms: true,
+        grandTotal: true, amountPaid: true,
+      },
+    });
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const overdue = invoices
+      .map((inv) => {
+        const balanceDue = inv.grandTotal - (inv.amountPaid || 0);
+        if (balanceDue <= 0.01) return null;
+
+        // Compute due date from paymentTerms string
+        const invDate = new Date(inv.invoiceDate);
+        let dueDate = new Date(invDate);
+        const terms = (inv.paymentTerms || '').toLowerCase();
+        if (terms.includes('net 15')) dueDate.setDate(dueDate.getDate() + 15);
+        else if (terms.includes('net 30')) dueDate.setDate(dueDate.getDate() + 30);
+        else if (terms.includes('net 60')) dueDate.setDate(dueDate.getDate() + 60);
+        // COD / Immediate => due on invoice date
+
+        const daysOverdue = Math.max(0, Math.floor((today - dueDate) / (1000 * 60 * 60 * 24)));
+
+        return {
+          id: inv.id,
+          invoiceNo: inv.invoiceNo,
+          invoiceDate: inv.invoiceDate,
+          dueDate: dueDate.toISOString().slice(0, 10),
+          daysOverdue,
+          balanceDue: Math.round(balanceDue * 100) / 100,
+        };
+      })
+      .filter(Boolean);
+
+    const totalOutstanding = overdue.reduce((s, r) => s + r.balanceDue, 0);
+
+    res.json({ customerId: customer.id, name: customer.name, totalOutstanding, invoices: overdue });
+  } catch (e) { next(e); }
+});
+
+// Indexed customer search (for fast autocomplete)
+router.get('/search', async (req, res, next) => {
+  try {
+    const q = (req.query.q || '').trim();
+    if (!q) return res.json([]);
+    const customers = await prisma.customer.findMany({
+      where: { name: { contains: q, mode: 'insensitive' } },
+      orderBy: { name: 'asc' },
+      take: 15,
+      select: { id: true, name: true, contactPerson: true, contactPhone: true, gstn: true, addressLines: true },
+    });
+    res.json(customers);
+  } catch (e) { next(e); }
+});
+
 export default router;

@@ -321,4 +321,62 @@ export function generateInvoicePdf(invoice, settings) {
   });
 }
 
+// Build a 3-copy PDF with page breaks between copies.
+// Each copy uses a different header label per statutory requirements.
+const COPY_LABELS = [
+  'Original for Buyer',
+  "Transporter's Copy",
+  'Office Copy',
+];
+
+export function buildTripleCopyDocDefinition(invoice, settings) {
+  const theme = getTheme(invoice.theme || settings.defaultTheme);
+
+  const pages = COPY_LABELS.map((copyLabel, idx) => {
+    const overriddenInvoice = { ...invoice, copyType: copyLabel };
+    const singleDef = buildDocDefinition(overriddenInvoice, settings);
+    // Add watermark-style copy label as top ribbon
+    const copyBanner = {
+      canvas: [
+        { type: 'rect', x: 0, y: 0, w: 523, h: 16, color: theme.accent },
+      ],
+    };
+    const copyText = {
+      text: copyLabel.toUpperCase(),
+      fontSize: 8,
+      bold: true,
+      color: '#ffffff',
+      characterSpacing: 1.5,
+      margin: [0, -16, 0, 8],
+      alignment: 'center',
+    };
+
+    const contents = singleDef.content.map((block) => block);
+    const pageContent = [copyBanner, copyText, ...contents];
+    // Add page break after each copy except the last
+    if (idx < COPY_LABELS.length - 1) {
+      pageContent.push({ text: '', pageBreak: 'after' });
+    }
+    return pageContent;
+  });
+
+  const baseDef = buildDocDefinition({ ...invoice, copyType: COPY_LABELS[0] }, settings);
+  return {
+    ...baseDef,
+    content: pages.flat(),
+  };
+}
+
+export function generateTripleCopyPdf(invoice, settings) {
+  const docDef = buildTripleCopyDocDefinition(invoice, settings);
+  const pdfDoc = printer.createPdfKitDocument(docDef);
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    pdfDoc.on('data', (c) => chunks.push(c));
+    pdfDoc.on('end', () => resolve(Buffer.concat(chunks)));
+    pdfDoc.on('error', reject);
+    pdfDoc.end();
+  });
+}
+
 export default generateInvoicePdf;

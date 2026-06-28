@@ -7,6 +7,40 @@ import { THEME_LIST } from '../themes.js';
 import { computeTotals } from '../utils/calc.js';
 import { formatINR } from '../utils/money.js';
 
+function CustomerOutstanding({ customerId, sym }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!customerId) { setData(null); return; }
+    setLoading(true);
+    api.getCustomerOutstanding(customerId).then(setData).catch(() => setData(null)).finally(() => setLoading(false));
+  }, [customerId]);
+
+  if (!customerId) return null;
+  if (loading) return <div className="outstanding-panel" style={{ padding: 10, fontSize: 13 }}>Loading outstanding…</div>;
+  if (!data) return null;
+  const over = data.invoices?.filter((i) => i.daysOverdue > 0) || [];
+  return (
+    <div className="outstanding-panel" style={{ background: data.totalOutstanding > 0 ? '#fffbf0' : '#f0faf4', border: `1px solid ${data.totalOutstanding > 0 ? '#f5c06a' : '#6fcf97'}`, borderRadius: 8, padding: '12px 14px', marginBottom: 12, fontSize: 13 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <b>Customer Outstanding</b>
+        <b style={{ color: data.totalOutstanding > 0 ? '#b9651a' : '#1f8f4e' }}>{sym} {formatINR(data.totalOutstanding)}</b>
+      </div>
+      {over.length > 0 && (
+        <div style={{ color: '#c0392b', fontSize: 12, marginBottom: 6 }}>⚠ {over.length} overdue invoice(s)</div>
+      )}
+      {data.invoices?.slice(0, 4).map((inv) => (
+        <div key={inv.invoiceId} style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid rgba(0,0,0,0.06)', paddingTop: 4, marginTop: 4 }}>
+          <span className="mono" style={{ fontSize: 12 }}>{inv.invoiceNo}</span>
+          <span style={{ fontSize: 12, color: inv.daysOverdue > 0 ? '#c0392b' : '#374151' }}>
+            {sym} {formatINR(inv.balanceDue)}{inv.daysOverdue > 0 ? ` · ${inv.daysOverdue}d overdue` : ''}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const todayISO = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -88,6 +122,7 @@ export default function InvoiceEditor() {
   // Invoice series + inventory
   const [series, setSeries] = useState([]);
   const [inventory, setInventory] = useState([]);
+  const [paymentTermsList, setPaymentTermsList] = useState([]);
 
   // Client search autofill (gated behind an explicit "Find existing client")
   const [clientSearchOpen, setClientSearchOpen] = useState(false);
@@ -131,6 +166,7 @@ export default function InvoiceEditor() {
       let seriesList = [];
       try { seriesList = await api.listSeries(); if (alive) setSeries(seriesList); } catch { /* ignore */ }
       try { const inv2 = await api.listInventory(); if (alive) setInventory(inv2); } catch { /* ignore */ }
+      try { const terms = await api.listPaymentTerms(); if (alive) setPaymentTermsList(terms); } catch { /* ignore */ }
       // Client data is admin-only — users never fetch it.
       if (isAdmin) {
         try { custList = await api.listCustomers(); if (alive) setCustomers(custList); } catch { /* ignore */ }
@@ -401,7 +437,20 @@ export default function InvoiceEditor() {
             <label>Copy Type<input value={inv.copyType} onChange={(e) => set({ copyType: e.target.value })} /></label>
             <label>Transport Mode<input value={inv.transportMode} onChange={(e) => set({ transportMode: e.target.value })} /></label>
             <label>PO / Ref No<input value={inv.poRefNo} onChange={(e) => set({ poRefNo: e.target.value })} /></label>
-            <label>Payment Terms<input value={inv.paymentTerms} onChange={(e) => set({ paymentTerms: e.target.value })} /></label>
+            <label>Payment Terms
+              {paymentTermsList.length > 0 ? (
+                <select value={inv.paymentTerms || ''} onChange={(e) => set({ paymentTerms: e.target.value })}>
+                  <option value="">— Select —</option>
+                  {paymentTermsList.map((t) => <option key={t.id} value={t.label}>{t.label}</option>)}
+                  <option value="__custom">Custom…</option>
+                </select>
+              ) : (
+                <input value={inv.paymentTerms} onChange={(e) => set({ paymentTerms: e.target.value })} />
+              )}
+              {paymentTermsList.length > 0 && inv.paymentTerms === '__custom' && (
+                <input style={{ marginTop: 4 }} placeholder="Enter custom terms" onChange={(e) => set({ paymentTerms: e.target.value })} />
+              )}
+            </label>
           </div>
         </section>
 
@@ -438,6 +487,7 @@ export default function InvoiceEditor() {
               )}
             </div>
           )}
+          {isAdmin && inv.customerId && <CustomerOutstanding customerId={inv.customerId} sym={sym} />}
           <div className="grid2">
             <label className="full">Customer Name *<input value={inv.buyerName} onChange={(e) => set({ buyerName: e.target.value })} /></label>
             <label className="full">Address<textarea rows={3} value={addressText} placeholder="One line per row" onChange={(e) => set({ buyerAddressLines: e.target.value.split('\n') })} /></label>
@@ -570,9 +620,23 @@ export default function InvoiceEditor() {
             <button className="btn primary" onClick={savedId ? persist : saveAndNew} disabled={saving}>{saving ? 'Saving…' : (savedId ? 'Update' : 'Save & New')}</button>
             <button className="btn" onClick={doPrint}>Print</button>
             <button className="btn" onClick={() => doExport('pdf')} disabled={busy === 'pdf'}>{busy === 'pdf' ? '…' : 'PDF'}</button>
+            <button className="btn" onClick={async () => {
+              if (!savedId) { flash('Save the invoice first to generate 3-copy PDF', 'err'); return; }
+              setBusy('3copy');
+              try { await exporter.tripleCopyById(savedId, `${inv.invoiceNo}-3copy.pdf`); }
+              catch (e) { flash(e.message, 'err'); }
+              finally { setBusy(''); }
+            }} disabled={busy === '3copy' || !savedId} title={savedId ? '3 copies: Original, Transporter, Office' : 'Save invoice first'}>
+              {busy === '3copy' ? '…' : '3-Copy'}
+            </button>
             <button className="btn" onClick={() => doExport('docx')} disabled={busy === 'docx'}>{busy === 'docx' ? '…' : 'Word'}</button>
             <button className="btn wa" onClick={shareWhatsApp}>WhatsApp</button>
             <button className="btn" onClick={shareEmail}>Email</button>
+            {isAdmin && savedId && (
+              <button className="btn" onClick={() => nav(`/delivery-challans?invoiceId=${savedId}&invoiceNo=${encodeURIComponent(inv.invoiceNo)}`)}>
+                Create DC
+              </button>
+            )}
           </div>
         </div>
 
