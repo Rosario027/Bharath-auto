@@ -20,12 +20,17 @@ async function resolveSeries(client, seriesId, docType = 'invoice') {
     || (await client.invoiceSeries.findFirst());
 }
 
-const DOC_TITLES = { invoice: null, 'credit-note': 'Credit Note', 'debit-note': 'Debit Note' };
+const DOC_TITLES = { invoice: null, 'credit-note': 'Credit Note', 'debit-note': 'Debit Note', 'purchase-order': 'Purchase Order' };
+const VALID_DOC_TYPES = ['invoice', 'credit-note', 'debit-note', 'purchase-order'];
+// Purchase orders are commitments, not financial transactions: they must never
+// post to the books or move stock until they are converted into an invoice.
+const isLedgerDoc = (docType) => ['invoice', 'credit-note', 'debit-note'].includes(docType);
 
 // Apply stock effects for invoice lines linked to inventory.
-// Sales invoices deduct stock; credit notes restore it.
+// Sales invoices deduct stock; credit notes restore it. Purchase orders and
+// debit notes never touch stock.
 async function applyStock(tx, invoice, items, username) {
-  const sign = invoice.docType === 'credit-note' ? 1 : invoice.docType === 'debit-note' ? 0 : -1;
+  const sign = invoice.docType === 'credit-note' ? 1 : invoice.docType === 'invoice' ? -1 : 0;
   if (sign === 0) return;
   for (const it of items) {
     if (!it.inventoryItemId || !(Number(it.qty) > 0)) continue;
@@ -153,10 +158,15 @@ async function resolveCustomerId(tx, body) {
 }
 
 function buildScalarData(body, totals, settings) {
-  const docType = ['credit-note', 'debit-note'].includes(body.docType) ? body.docType : 'invoice';
+  const docType = VALID_DOC_TYPES.includes(body.docType) ? body.docType : 'invoice';
+  const isPO = docType === 'purchase-order';
   return {
     docType,
     againstInvoiceNo: body.againstInvoiceNo ?? '',
+    poStatus: isPO ? (['open', 'invoiced', 'closed', 'cancelled'].includes(body.poStatus) ? body.poStatus : 'open') : 'open',
+    convertedToNo: body.convertedToNo ?? '',
+    convertedFromNo: body.convertedFromNo ?? '',
+    expectedDate: body.expectedDate ? new Date(body.expectedDate) : null,
     invoiceDate: body.invoiceDate ? new Date(body.invoiceDate) : new Date(),
     title: body.title ?? (DOC_TITLES[docType] || settings.invoiceTitle),
     copyType: body.copyType ?? settings.invoiceCopy,
@@ -230,7 +240,10 @@ router.post('/', async (req, res, next) => {
     });
 
     // Auto-post the document into the accounting books (best-effort).
-    postInvoiceToBooks(created).catch((err) => console.error('[accounting] auto-post failed:', err.message));
+    // Purchase orders are not financial transactions — they post nothing.
+    if (isLedgerDoc(created.docType)) {
+      postInvoiceToBooks(created).catch((err) => console.error('[accounting] auto-post failed:', err.message));
+    }
 
     res.status(201).json(created);
   } catch (e) {
@@ -275,8 +288,10 @@ router.put('/:id', async (req, res, next) => {
     });
 
     // Keep the books in sync: replace the linked voucher's lines with the
-    // edited amounts (change recorded in the MCA audit trail).
-    repostInvoiceToBooks(updated, req.user?.username || 'system').catch((err) => console.error('[accounting] re-post failed:', err.message));
+    // edited amounts (change recorded in the MCA audit trail). POs hold no voucher.
+    if (isLedgerDoc(updated.docType)) {
+      repostInvoiceToBooks(updated, req.user?.username || 'system').catch((err) => console.error('[accounting] re-post failed:', err.message));
+    }
 
     res.json(updated);
   } catch (e) {
@@ -320,6 +335,93 @@ router.delete('/:id', async (req, res, next) => {
     res.json({ ok: true, invoice: updated });
   } catch (e) {
     if (e.code === 'P2025') return res.status(404).json({ error: 'Invoice not found' });
+    next(e);
+  }
+});
+
+// Update a purchase order's lifecycle status (open / closed / cancelled).
+// "invoiced" is only ever set by the conversion endpoint below.
+router.patch('/:id/po-status', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const status = req.body?.poStatus;
+    if (!['open', 'closed', 'cancelled'].includes(status)) return res.status(400).json({ error: 'Pick a valid status (open / closed / cancelled)' });
+    const po = await prisma.invoice.findUnique({ where: { id } });
+    if (!po || po.docType !== 'purchase-order') return res.status(404).json({ error: 'Purchase order not found' });
+    if (po.poStatus === 'invoiced') return res.status(400).json({ error: 'This PO has already been converted to an invoice' });
+    const updated = await prisma.invoice.update({
+      where: { id },
+      data: { poStatus: status, edits: { create: { summary: `Purchase order marked ${status}` } } },
+      include: { items: { orderBy: { slNo: 'asc' } } },
+    });
+    res.json(updated);
+  } catch (e) { next(e); }
+});
+
+// Convert an open purchase order into a sales invoice. Copies the buyer and
+// every line, numbers it from the default invoice series, deducts stock and
+// posts it to the books — then locks the PO as "invoiced" with a two-way link.
+router.post('/:id/convert-to-invoice', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const settings = await getSettings();
+    const po = await prisma.invoice.findUnique({ where: { id }, include: { items: { orderBy: { slNo: 'asc' } } } });
+    if (!po || po.docType !== 'purchase-order') return res.status(404).json({ error: 'Purchase order not found' });
+    if (po.status === 'deleted') return res.status(400).json({ error: 'This purchase order was deleted' });
+    if (po.poStatus === 'invoiced' || po.convertedToNo) return res.status(409).json({ error: `Already converted to invoice ${po.convertedToNo}` });
+    if (po.poStatus === 'cancelled') return res.status(400).json({ error: 'A cancelled PO cannot be converted' });
+
+    const items = normalizeItems(po.items, settings.defaultGstRate);
+    if (items.length === 0) return res.status(400).json({ error: 'This PO has no line items to invoice' });
+    const totals = computeTotals({ ...po, items });
+
+    const created = await prisma.$transaction(async (tx) => {
+      const series = await resolveSeries(tx, req.body?.seriesId, 'invoice');
+      const free = await computeFreeNumber(tx, series);
+      const inv = await tx.invoice.create({
+        data: {
+          invoiceNo: free.invoiceNo,
+          seriesId: series?.id ?? null,
+          docType: 'invoice',
+          convertedFromNo: po.invoiceNo,
+          invoiceDate: new Date(),
+          title: settings.invoiceTitle,
+          copyType: settings.invoiceCopy,
+          transportMode: po.transportMode,
+          poRefNo: po.poRefNo || po.invoiceNo,
+          paymentTerms: po.paymentTerms,
+          customerId: po.customerId,
+          buyerName: po.buyerName,
+          buyerAddressLines: po.buyerAddressLines,
+          buyerContactPerson: po.buyerContactPerson,
+          buyerContactPhone: po.buyerContactPhone,
+          buyerEmail: po.buyerEmail,
+          buyerGstn: po.buyerGstn,
+          buyerStateCode: po.buyerStateCode,
+          taxMode: po.taxMode,
+          cgstRate: po.cgstRate, sgstRate: po.sgstRate, igstRate: po.igstRate,
+          subTotal: totals.subTotal,
+          cgstAmount: totals.cgstAmount, sgstAmount: totals.sgstAmount, igstAmount: totals.igstAmount,
+          roundOff: totals.roundOff, grandTotal: totals.grandTotal, amountWords: totals.amountWords,
+          theme: po.theme,
+          notes: po.notes,
+          items: { create: items },
+        },
+        include: { items: { orderBy: { slNo: 'asc' } } },
+      });
+      if (series) await tx.invoiceSeries.update({ where: { id: series.id }, data: { nextSeq: free.seq + 1 } });
+      await applyStock(tx, inv, items, req.user?.username || '');
+      await tx.invoice.update({
+        where: { id: po.id },
+        data: { poStatus: 'invoiced', convertedToNo: inv.invoiceNo, edits: { create: { summary: `Converted to invoice ${inv.invoiceNo}` } } },
+      });
+      return inv;
+    });
+
+    postInvoiceToBooks(created).catch((err) => console.error('[accounting] auto-post failed:', err.message));
+    res.status(201).json(created);
+  } catch (e) {
+    if (e.code === 'P2002') return res.status(409).json({ error: 'Invoice number already exists' });
     next(e);
   }
 });

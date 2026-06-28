@@ -5,14 +5,39 @@ import 'dotenv/config';
 import { prisma } from './db.js';
 import { hashPassword } from './auth.js';
 
+// Default login credentials — admin signs in as Owner/Owner123, the staff
+// (non-admin) account as Staff/Staff123. Override via env if needed.
+const ADMIN_USER = process.env.ADMIN_USER || 'Owner';
+const ADMIN_PASS = process.env.ADMIN_PASS || 'Owner123';
+const STAFF_USER = process.env.USER_USER || 'Staff';
+const STAFF_PASS = process.env.USER_PASS || 'Staff123';
+
 export async function ensureUsers() {
   const count = await prisma.user.count();
   if (count === 0) {
-    await prisma.user.create({ data: { username: process.env.ADMIN_USER || 'Admin', role: 'admin', passHash: hashPassword(process.env.ADMIN_PASS || 'Admin123') } });
-    await prisma.user.create({ data: { username: process.env.USER_USER || 'User', role: 'user', passHash: hashPassword(process.env.USER_PASS || 'User123') } });
-    console.log('[seed] Default users created (Admin / User).');
+    await prisma.user.create({ data: { username: ADMIN_USER, role: 'admin', passHash: hashPassword(ADMIN_PASS) } });
+    await prisma.user.create({ data: { username: STAFF_USER, role: 'user', passHash: hashPassword(STAFF_PASS) } });
+    console.log(`[seed] Default users created (${ADMIN_USER} / ${STAFF_USER}).`);
   }
+  await migrateDefaultCredentials();
   await ensureStaffProfiles();
+}
+
+// One-time migration for books that were first seeded with the old default
+// logins (Admin / User). Rename them to the new Owner / Staff identities and
+// reset their passwords. Guarded by "legacy name exists AND new name does not",
+// so it runs at most once and never clobbers a password the owner later set.
+export async function migrateDefaultCredentials() {
+  const rename = async (oldName, newName, role, pass) => {
+    const legacy = await prisma.user.findUnique({ where: { username: oldName } });
+    if (!legacy) return;
+    const taken = await prisma.user.findUnique({ where: { username: newName } });
+    if (taken) return;
+    await prisma.user.update({ where: { id: legacy.id }, data: { username: newName, role, passHash: hashPassword(pass) } });
+    console.log(`[seed] Login "${oldName}" migrated to "${newName}".`);
+  };
+  await rename('Admin', ADMIN_USER, 'admin', ADMIN_PASS);
+  await rename('User', STAFF_USER, 'user', STAFF_PASS);
 }
 
 // Every non-admin login must be able to use the staff portal (attendance,
@@ -46,6 +71,9 @@ export async function ensureDefaultSeries(settings) {
   if (cn === 0) await prisma.invoiceSeries.create({ data: { name: 'Credit Note', prefix: 'CN-', nextSeq: 1, isDefault: true, docType: 'credit-note' } });
   const dn = await prisma.invoiceSeries.count({ where: { docType: 'debit-note' } });
   if (dn === 0) await prisma.invoiceSeries.create({ data: { name: 'Debit Note', prefix: 'DN-', nextSeq: 1, isDefault: true, docType: 'debit-note' } });
+  // Purchase order series — its own running serial number (SR No).
+  const po = await prisma.invoiceSeries.count({ where: { docType: 'purchase-order' } });
+  if (po === 0) await prisma.invoiceSeries.create({ data: { name: 'Purchase Order', prefix: 'BA/PO-', nextSeq: 1, padWidth: 4, isDefault: true, docType: 'purchase-order' } });
 }
 
 const KURALS = [

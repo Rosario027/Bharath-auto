@@ -39,7 +39,7 @@ export default function AccReports() {
       {toast && <div className={`toast ${toast.kind}`}>{toast.msg}</div>}
       <header className="page-head">
         <div>
-          <button className="btn ghost" onClick={() => nav('/accounting')}>&larr; Day Book</button>
+          <button className="btn ghost" onClick={() => nav('/accounting')}>&larr; Accounting</button>
           <h1 style={{ marginTop: 6 }}>Financial Statements</h1>
           <p className="subtle">Live from the books — opening balances + all vouchers (auto-posted invoices included).</p>
         </div>

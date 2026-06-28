@@ -66,7 +66,7 @@ export default function SiteVisits() {
       }
     };
     return [...filtered].sort((a, b) => (val(a) < val(b) ? -1 : val(a) > val(b) ? 1 : 0) * dir);
-  }, [visits, q, filter, districtF, execF, sort]);
+  }, [visits, q, filter, categoryF, districtF, execF, sort]);
 
   const count = (s) => visits.filter((v) => v.status === s).length;
   const pipeline = visits.filter((v) => v.status !== 'closed').reduce((sum, v) => sum + (v.quotationValue || 0), 0);

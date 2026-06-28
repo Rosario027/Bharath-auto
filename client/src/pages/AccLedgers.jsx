@@ -92,7 +92,7 @@ export default function AccLedgers() {
       {toast && <div className={`toast ${toast.kind}`}>{toast.msg}</div>}
       <header className="page-head">
         <div>
-          <button className="btn ghost" onClick={() => nav('/accounting')}>&larr; Day Book</button>
+          <button className="btn ghost" onClick={() => nav('/accounting')}>&larr; Accounting</button>
           <h1 style={{ marginTop: 6 }}>Ledgers</h1>
           <p className="subtle">Chart of accounts — Tally-style groups. Customer ledgers are auto-created when invoices post.</p>
         </div>

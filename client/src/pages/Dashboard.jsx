@@ -60,6 +60,7 @@ export default function Dashboard() {
 
   const view = useMemo(() => {
     const filtered = invoices.filter((inv) => {
+      if (inv.docType === 'purchase-order') return false; // POs have their own page
       const st = docStatus(inv);
       if (statusF !== 'all' && st.key !== statusF) return false;
       if (typeF !== 'all' && inv.docType !== typeF) return false;
@@ -78,13 +79,14 @@ export default function Dashboard() {
     return [...filtered].sort((a, b) => (val(a) < val(b) ? -1 : val(a) > val(b) ? 1 : 0) * dir);
   }, [invoices, statusF, typeF, sort]);
 
-  const active = invoices.filter((i) => i.status !== 'deleted');
+  const billingDocs = invoices.filter((i) => i.docType !== 'purchase-order');
+  const active = billingDocs.filter((i) => i.status !== 'deleted');
   const total = active.reduce((s, i) => s + (i.grandTotal || 0), 0);
   const outstanding = active
     .filter((i) => i.docType === 'invoice')
     .reduce((s, i) => s + Math.max(0, (i.grandTotal || 0) - (i.amountPaid || 0)), 0);
   const sym = settings?.currencySymbol || '₹';
-  const countStatus = (key) => invoices.filter((i) => docStatus(i).key === key).length;
+  const countStatus = (key) => billingDocs.filter((i) => docStatus(i).key === key).length;
 
   const remove = async (inv) => {
     if (!confirm(`Cancel invoice ${inv.invoiceNo}?\n\nIt stays in records greyed-out (and in the GST documents-issued summary); its number is never reused. Books & stock are reversed.`)) return;

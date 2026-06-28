@@ -170,7 +170,7 @@ export default function AccPurchases() {
       {toast && <div className={`toast ${toast.kind}`}>{toast.msg}</div>}
       <header className="page-head">
         <div>
-          <button className="btn ghost" onClick={() => nav('/accounting')}>&larr; Day Book</button>
+          <button className="btn ghost" onClick={() => nav('/accounting')}>&larr; Accounting</button>
           <h1 style={{ marginTop: 6 }}>Purchases</h1>
           <p className="subtle">Supplier register + purchase bills — every bill stocks-in inventory and posts to the books (Dr Purchase + GST Input / Cr Supplier). Pay bills from Bank Reconciliation.</p>
         </div>

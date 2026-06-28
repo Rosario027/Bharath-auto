@@ -108,7 +108,7 @@ export default function AccBankRecon() {
       {toast && <div className={`toast ${toast.kind}`}>{toast.msg}</div>}
       <header className="page-head">
         <div>
-          <button className="btn ghost" onClick={() => nav('/accounting')}>&larr; Day Book</button>
+          <button className="btn ghost" onClick={() => nav('/accounting')}>&larr; Accounting</button>
           <h1 style={{ marginTop: 6 }}>Bank Reconciliation</h1>
           <p className="subtle">Import statements → every transaction lands here to be categorised or mapped (AR invoices · AP bills · ledgers).</p>
         </div>

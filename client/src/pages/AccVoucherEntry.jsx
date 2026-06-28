@@ -66,7 +66,7 @@ export default function AccVoucherEntry() {
       {toast && <div className={`toast ${toast.kind}`}>{toast.msg}</div>}
       <header className="page-head">
         <div>
-          <button className="btn ghost" onClick={() => nav('/accounting')}>&larr; Day Book</button>
+          <button className="btn ghost" onClick={() => nav('/accounting')}>&larr; Accounting</button>
           <h1 style={{ marginTop: 6 }}>{isEdit ? `${voucherNo} · ${VTYPE_LABELS[vtype]}` : 'New Voucher'}</h1>
           {auto && <p className="subtle">Auto-posted from billing — edits here are logged but the source invoice stays unchanged.</p>}
         </div>

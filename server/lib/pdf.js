@@ -77,7 +77,7 @@ export function buildDocDefinition(invoice, settings) {
         table: {
           widths: ['auto', 'auto'],
           body: [
-            [{ text: 'Invoice No', fontSize: 8, color: theme.muted, alignment: 'right' }, { text: invoice.invoiceNo, fontSize: 9, bold: true, alignment: 'right' }],
+            [{ text: invoice.docType === 'purchase-order' ? 'PO No' : invoice.docType === 'credit-note' ? 'Credit Note No' : invoice.docType === 'debit-note' ? 'Debit Note No' : 'Invoice No', fontSize: 8, color: theme.muted, alignment: 'right' }, { text: invoice.invoiceNo, fontSize: 9, bold: true, alignment: 'right' }],
             [{ text: 'Date', fontSize: 8, color: theme.muted, alignment: 'right' }, { text: fmtDate(invoice.invoiceDate), fontSize: 9, bold: true, alignment: 'right' }],
             ...(settings.division ? [[{ text: 'Division', fontSize: 8, color: theme.muted, alignment: 'right' }, { text: settings.division, fontSize: 9, alignment: 'right' }]] : []),
           ],
