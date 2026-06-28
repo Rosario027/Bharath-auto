@@ -24,6 +24,12 @@ import accountingRouter from './routes/accounting.js';
 import purchasesRouter from './routes/purchases.js';
 import overviewRouter from './routes/overview.js';
 import backupRouter from './routes/backup.js';
+import deliveryChallansRouter from './routes/deliveryChallans.js';
+import paymentTermsRouter from './routes/paymentTerms.js';
+import rmaRouter from './routes/rma.js';
+import businessAssetsRouter from './routes/businessAssets.js';
+import staffGoalsRouter from './routes/staffGoals.js';
+import feedbackRouter from './routes/feedback.js';
 import { authRequired, adminRequired, requireMod } from './lib/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -48,6 +54,12 @@ app.use('/api/accounting', requireModWrap('accounting', accountingRouter));
 app.use('/api/purchases', requireModWrap('accounting', purchasesRouter)); // purchases live under the accounting grant
 app.use('/api/overview', overviewRouter);                  // general admin dashboard
 app.use('/api/backup', backupRouter);                      // full data backup (admin)
+app.use('/api/delivery-challans', deliveryChallansRouter); // DC — BRD §1.1
+app.use('/api/payment-terms', paymentTermsRouter);         // Payment terms — BRD §1.3
+app.use('/api/rma', requireModWrap('invoice', rmaRouter)); // RMA — BRD §5.1
+app.use('/api/business-assets', authRequired, businessAssetsRouter); // Asset tracking — BRD §5.2
+app.use('/api/staff-goals', staffGoalsRouter);             // Career development — BRD §4.2
+app.use('/api/feedback', feedbackRouter);                  // Feedback loop — BRD §4.3
 
 // Routers below carry their own authRequired; wrap to add the module gate after it.
 function requireModWrap(mod, router) {

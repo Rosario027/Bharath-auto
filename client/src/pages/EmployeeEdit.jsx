@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api } from '../api.js';
+import { api, exporter } from '../api.js';
 
 const DOCS = [
   { key: 'aadhar', field: 'aadharDoc', label: 'Aadhaar Card' },
@@ -26,6 +26,10 @@ const blank = {
   medication: '', emergencyName: '', emergencyPhone: '', email: '', vehicleNo: '', insuranceExpiry: '', active: true,
   monthlySalary: 0, satOff: false, sunOff: true, sunMultiplier: 2,
   aadharDoc: null, panDoc: null, licenseDoc: null, rcDoc: null, insuranceDoc: null,
+  permanentAddress: '', currentAddress: '', familyLocationAddress: '',
+  referredByType: '', referredByEmployeeId: '',
+  photoUrl: '', familyPhotoUrl: '',
+  insuranceDocs: [], academicDocs: [],
 };
 
 export default function EmployeeEdit() {
@@ -41,16 +45,32 @@ export default function EmployeeEdit() {
   const [attLog, setAttLog] = useState([]);
   const [salMonth, setSalMonth] = useState(new Date().toISOString().slice(0, 7));
   const [salary, setSalary] = useState(null);
+  const [allEmps, setAllEmps] = useState([]);
+  const [salBusy, setSalBusy] = useState(false);
   const [toast, setToast] = useState(null);
   const flash = (msg, kind = 'ok') => { setToast({ msg, kind }); setTimeout(() => setToast(null), 3000); };
 
   useEffect(() => {
     if (!isEdit) return;
     api.getEmployee(id).then((e) => {
-      setEmp({ ...e, dob: toDateInput(e.dob), insuranceExpiry: toDateInput(e.insuranceExpiry) });
+      setEmp({
+        ...e,
+        dob: toDateInput(e.dob),
+        insuranceExpiry: toDateInput(e.insuranceExpiry),
+        insuranceDocs: e.insuranceDocs || [],
+        academicDocs: e.academicDocs || [],
+        permanentAddress: e.permanentAddress || '',
+        currentAddress: e.currentAddress || '',
+        familyLocationAddress: e.familyLocationAddress || '',
+        referredByType: e.referredByType || '',
+        referredByEmployeeId: e.referredByEmployeeId || '',
+        photoUrl: e.photoUrl || '',
+        familyPhotoUrl: e.familyPhotoUrl || '',
+      });
       setPresentToday(!!e.presentToday);
     }).catch((e) => flash(e.message, 'err'));
     api.adminAttendance(`?employeeId=${id}`).then(setAttLog).catch(() => {});
+    api.listEmployees().then(setAllEmps).catch(() => {});
   }, [id, isEdit]);
 
   const set = (patch) => setEmp((p) => ({ ...p, ...patch }));
@@ -111,6 +131,63 @@ export default function EmployeeEdit() {
     try { await api.deleteEmployeeDoc(savedId, doc.key); set({ [doc.field]: null }); }
     catch (e) { flash(e.message, 'err'); }
     finally { setBusyDoc(''); }
+  };
+
+  const readDataUrl = (file) => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(file); });
+
+  const uploadPhoto = async (type, file) => {
+    if (!savedId) return flash('Save employee first', 'err');
+    if (file.size > 3 * 1024 * 1024) return flash('Photo too large (max 3 MB)', 'err');
+    setBusyDoc(`photo-${type}`);
+    try {
+      const dataUrl = await readDataUrl(file);
+      await api.setEmployeePhoto(savedId, dataUrl, type);
+      set(type === 'family' ? { familyPhotoUrl: dataUrl } : { photoUrl: dataUrl });
+      flash('Photo saved');
+    } catch (e) { flash(e.message, 'err'); }
+    finally { setBusyDoc(''); }
+  };
+
+  const addInsDoc = async (file) => {
+    if (!savedId) return flash('Save employee first', 'err');
+    if (file.size > 3 * 1024 * 1024) return flash('File too large (max 3 MB)', 'err');
+    setBusyDoc('ins');
+    try {
+      const dataUrl = await readDataUrl(file);
+      await api.addInsuranceDoc(savedId, dataUrl);
+      set({ insuranceDocs: [...(emp.insuranceDocs || []), dataUrl] });
+      flash('Insurance document added');
+    } catch (e) { flash(e.message, 'err'); }
+    finally { setBusyDoc(''); }
+  };
+
+  const removeInsDoc = async (idx) => {
+    try {
+      await api.removeInsuranceDoc(savedId, idx);
+      set({ insuranceDocs: emp.insuranceDocs.filter((_, i) => i !== idx) });
+      flash('Removed');
+    } catch (e) { flash(e.message, 'err'); }
+  };
+
+  const addAcadDoc = async (file) => {
+    if (!savedId) return flash('Save employee first', 'err');
+    if (file.size > 3 * 1024 * 1024) return flash('File too large (max 3 MB)', 'err');
+    setBusyDoc('acad');
+    try {
+      const dataUrl = await readDataUrl(file);
+      await api.addAcademicDoc(savedId, dataUrl);
+      set({ academicDocs: [...(emp.academicDocs || []), dataUrl] });
+      flash('Academic document added');
+    } catch (e) { flash(e.message, 'err'); }
+    finally { setBusyDoc(''); }
+  };
+
+  const removeAcadDoc = async (idx) => {
+    try {
+      await api.removeAcademicDoc(savedId, idx);
+      set({ academicDocs: emp.academicDocs.filter((_, i) => i !== idx) });
+      flash('Removed');
+    } catch (e) { flash(e.message, 'err'); }
   };
 
   const togglePresent = async () => {
@@ -220,12 +297,24 @@ export default function EmployeeEdit() {
         {savedId && (
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 6 }}>
             <label style={{ width: 170 }}>Month<input type="month" value={salMonth} onChange={(e) => setSalMonth(e.target.value)} /></label>
-            <button className="btn" onClick={async () => { try { setSalary(await api.staffSalary(savedId, salMonth)); } catch (e) { flash(e.message, 'err'); } }}>Compute pay</button>
+            <button className="btn" disabled={salBusy} onClick={async () => {
+              setSalBusy(true);
+              try { setSalary(await api.staffSalary(savedId, salMonth)); }
+              catch (e) { flash(e.message, 'err'); }
+              finally { setSalBusy(false); }
+            }}>{salBusy ? 'Computing…' : 'Compute pay'}</button>
+            <button className="btn" disabled={salBusy} onClick={async () => {
+              setSalBusy(true);
+              try { await exporter.salarySlip(savedId, salMonth); flash('Salary slip downloaded'); }
+              catch (e) { flash(e.message, 'err'); }
+              finally { setSalBusy(false); }
+            }}>⬇ Salary Slip PDF</button>
           </div>
         )}
         {salary && (
           <div className="salary-box">
-            <div><span>Working days</span><b>{salary.workingDays} / {salary.daysInMonth}</b></div>
+            {salary.periodStart && <div><span>Pay period</span><b>{salary.periodStart} → {salary.periodEnd}</b></div>}
+            <div><span>Working days (in period)</span><b>{salary.workingDays}</b></div>
             <div><span>Present (working days)</span><b>{salary.presentWorking}</b></div>
             <div><span>Worked on off-days</span><b>{salary.presentOff} × {salary.sunMultiplier}×</b></div>
             <div><span>Per-day rate</span><b>₹ {salary.perDay}</b></div>
@@ -234,6 +323,107 @@ export default function EmployeeEdit() {
             <div className="sal-total"><span>Payable ({salary.month})</span><b>₹ {salary.total}</b></div>
           </div>
         )}
+      </section>
+
+      <section className="fsec">
+        <h3>Address Details</h3>
+        <div className="grid2">
+          <label className="full">Current Address<textarea rows={2} value={emp.currentAddress || ''} onChange={(e) => set({ currentAddress: e.target.value })} placeholder="Where the employee currently stays" /></label>
+          <label className="full">Permanent Address<textarea rows={2} value={emp.permanentAddress || ''} onChange={(e) => set({ permanentAddress: e.target.value })} placeholder="Native / hometown address" /></label>
+          <label className="full">Family Location Address<textarea rows={2} value={emp.familyLocationAddress || ''} onChange={(e) => set({ familyLocationAddress: e.target.value })} placeholder="Where family stays (for emergency contact)" /></label>
+        </div>
+      </section>
+
+      <section className="fsec">
+        <h3>Referral & Recruitment</h3>
+        <div className="grid2">
+          <label>How was this employee referred?
+            <select value={emp.referredByType || ''} onChange={(e) => set({ referredByType: e.target.value })}>
+              <option value="">— Select —</option>
+              <option value="walk-in">Walk-in</option>
+              <option value="campus">Campus recruitment</option>
+              <option value="referral">Employee referral</option>
+            </select>
+          </label>
+          {emp.referredByType === 'referral' && (
+            <label>Referred By (Employee)
+              <select value={emp.referredByEmployeeId || ''} onChange={(e) => set({ referredByEmployeeId: e.target.value })}>
+                <option value="">— Select referring employee —</option>
+                {allEmps.filter((e) => String(e.id) !== String(savedId)).map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+            </label>
+          )}
+        </div>
+      </section>
+
+      <section className="fsec">
+        <h3>Photos</h3>
+        {!savedId && <p className="subtle" style={{ fontSize: 13 }}>Save the employee first to upload photos.</p>}
+        <div className="doc-grid">
+          {[['Employee Photo', 'photoUrl', 'employee'], ['Family Photo', 'familyPhotoUrl', 'family']].map(([label, field, type]) => (
+            <div className="doc-card" key={type}>
+              <div className="doc-label">{label}</div>
+              {emp[field] ? (
+                <a className="doc-thumb" href={emp[field]} target="_blank" rel="noreferrer"><img src={emp[field]} alt={label} /></a>
+              ) : <div className="doc-thumb empty">No photo</div>}
+              <div className="doc-actions">
+                <label className="btn xs">
+                  {busyDoc === `photo-${type}` ? '…' : (emp[field] ? 'Replace' : 'Upload')}
+                  <input type="file" accept="image/*" style={{ display: 'none' }} disabled={!savedId || !!busyDoc}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadPhoto(type, f); e.target.value = ''; }} />
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="fsec">
+        <div className="fsec-head">
+          <h3>Insurance Documents <span className="hint">multiple allowed</span></h3>
+          <label className="btn xs">
+            {busyDoc === 'ins' ? 'Uploading…' : '+ Add Document'}
+            <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} disabled={!savedId || busyDoc === 'ins'}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) addInsDoc(f); e.target.value = ''; }} />
+          </label>
+        </div>
+        {!savedId && <p className="subtle" style={{ fontSize: 13 }}>Save the employee first to attach documents.</p>}
+        {(emp.insuranceDocs || []).length === 0 && savedId && <p className="subtle">No insurance documents yet.</p>}
+        <div className="doc-grid">
+          {(emp.insuranceDocs || []).map((url, idx) => (
+            <div className="doc-card" key={idx}>
+              <div className="doc-label">Doc #{idx + 1}</div>
+              <a className="doc-thumb" href={url} target="_blank" rel="noreferrer"><img src={url} alt={`Insurance doc ${idx + 1}`} /></a>
+              <div className="doc-actions">
+                <button className="btn xs danger" onClick={() => removeInsDoc(idx)}>Remove</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="fsec">
+        <div className="fsec-head">
+          <h3>Academic / Certificate Documents</h3>
+          <label className="btn xs">
+            {busyDoc === 'acad' ? 'Uploading…' : '+ Add Document'}
+            <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} disabled={!savedId || busyDoc === 'acad'}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) addAcadDoc(f); e.target.value = ''; }} />
+          </label>
+        </div>
+        {!savedId && <p className="subtle" style={{ fontSize: 13 }}>Save the employee first to attach documents.</p>}
+        {(emp.academicDocs || []).length === 0 && savedId && <p className="subtle">No academic documents yet.</p>}
+        <div className="doc-grid">
+          {(emp.academicDocs || []).map((url, idx) => (
+            <div className="doc-card" key={idx}>
+              <div className="doc-label">Doc #{idx + 1}</div>
+              <a className="doc-thumb" href={url} target="_blank" rel="noreferrer"><img src={url} alt={`Academic doc ${idx + 1}`} /></a>
+              <div className="doc-actions">
+                <button className="btn xs danger" onClick={() => removeAcadDoc(idx)}>Remove</button>
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="fsec">

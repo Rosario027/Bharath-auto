@@ -198,12 +198,114 @@ router.delete('/tasks/:id', async (req, res, next) => {
   }
 });
 
+// ── Task Deadline Change Requests (admin side, BRD §6.1) ──
+router.get('/deadline-requests', async (req, res, next) => {
+  try {
+    const where = {};
+    if (req.query.status) where.status = req.query.status;
+    const requests = await prisma.taskDeadlineRequest.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        task: { select: { id: true, title: true, dueDate: true, status: true } },
+        employee: { select: { id: true, name: true } },
+      },
+    });
+    res.json(requests);
+  } catch (e) { next(e); }
+});
+
+router.put('/deadline-requests/:id', async (req, res, next) => {
+  try {
+    const { status, adminComment } = req.body || {};
+    if (!['approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'Status must be approved or rejected' });
+
+    const dr = await prisma.taskDeadlineRequest.findUnique({
+      where: { id: Number(req.params.id) },
+      include: { task: true },
+    });
+    if (!dr) return res.status(404).json({ error: 'Deadline request not found' });
+    if (dr.status !== 'pending') return res.status(400).json({ error: 'Request already resolved' });
+
+    const result = await prisma.$transaction(async (tx) => {
+      const updated = await tx.taskDeadlineRequest.update({
+        where: { id: dr.id },
+        data: { status, adminComment: adminComment || '' },
+      });
+
+      if (status === 'approved') {
+        // Update task's dueDate and restore it to processing status
+        await tx.staffTask.update({
+          where: { id: dr.taskId },
+          data: { dueDate: dr.proposedDate, status: 'processing' },
+        });
+      } else {
+        // Rejected: restore original status (remove pending_deadline_approval lock)
+        await tx.staffTask.update({
+          where: { id: dr.taskId },
+          data: { status: 'processing' }, // restore to active working state
+        });
+      }
+
+      return updated;
+    });
+
+    res.json(result);
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ error: 'Deadline request not found' });
+    next(e);
+  }
+});
+
+// Geofence zone management
+router.get('/geofence-zones', async (req, res, next) => {
+  try {
+    res.json(await prisma.geofenceZone.findMany({ orderBy: { name: 'asc' } }));
+  } catch (e) { next(e); }
+});
+
+router.post('/geofence-zones', async (req, res, next) => {
+  try {
+    const { name, lat, lng, radiusM } = req.body || {};
+    if (!name) return res.status(400).json({ error: 'Zone name required' });
+    if (!lat || !lng) return res.status(400).json({ error: 'GPS coordinates required' });
+    const zone = await prisma.geofenceZone.create({
+      data: { name, lat: parseFloat(lat), lng: parseFloat(lng), radiusM: Number(radiusM) || 200 },
+    });
+    res.status(201).json(zone);
+  } catch (e) { next(e); }
+});
+
+router.put('/geofence-zones/:id', async (req, res, next) => {
+  try {
+    const { name, lat, lng, radiusM, active } = req.body || {};
+    const data = {};
+    if (name !== undefined) data.name = name;
+    if (lat !== undefined) data.lat = parseFloat(lat);
+    if (lng !== undefined) data.lng = parseFloat(lng);
+    if (radiusM !== undefined) data.radiusM = Number(radiusM);
+    if (active !== undefined) data.active = Boolean(active);
+    const zone = await prisma.geofenceZone.update({ where: { id: Number(req.params.id) }, data });
+    res.json(zone);
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ error: 'Zone not found' });
+    next(e);
+  }
+});
+
+router.delete('/geofence-zones/:id', async (req, res, next) => {
+  try {
+    await prisma.geofenceZone.delete({ where: { id: Number(req.params.id) } });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
 // Counts for the admin staff dashboard + task pie chart.
 router.get('/summary', async (req, res, next) => {
   try {
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const [pendingLeaves, pendingExpenses, openTasks, assigned, processing, completed, adminTodo, upcoming] = await Promise.all([
+    const [pendingLeaves, pendingExpenses, openTasks, assigned, processing, completed, adminTodo, upcoming, pendingDeadlineRequests, unreadFeedback] = await Promise.all([
       prisma.leaveRequest.count({ where: { status: 'pending' } }),
       prisma.expenseClaim.count({ where: { status: 'pending' } }),
       prisma.staffTask.count({ where: { status: { not: 'completed' } } }),
@@ -212,14 +314,43 @@ router.get('/summary', async (req, res, next) => {
       prisma.staffTask.count({ where: { status: 'completed' } }),
       prisma.staffTask.count({ where: { employeeId: null, status: { not: 'completed' } } }),
       prisma.staffTask.count({ where: { status: { not: 'completed' }, dueDate: { gte: todayStr } } }),
+      prisma.taskDeadlineRequest.count({ where: { status: 'pending' } }),
+      prisma.staffFeedback.count({ where: { read: false } }),
     ]);
-    res.json({ pendingLeaves, pendingExpenses, openTasks, tasks: { assigned, processing, completed, adminTodo, upcoming } });
+    res.json({
+      pendingLeaves, pendingExpenses, openTasks,
+      pendingDeadlineRequests, unreadFeedback,
+      tasks: { assigned, processing, completed, adminTodo, upcoming },
+    });
   } catch (e) { next(e); }
 });
 
 // ── Salary / compensation calculator ──
+// Pay cycle: 15th of prior month → 14th of current month (BRD §3.1).
 // Pay = perDay × present-on-working-days + perDay × multiplier × present-on-off-days.
 // perDay = monthlySalary / workingDays (off-days per the employee's weekend policy).
+
+function getPayPeriod(month) {
+  // month = 'YYYY-MM' → cycle is 15th of previous month to 14th of this month
+  const [y, m] = month.split('-').map(Number);
+  const prevMonth = m === 1 ? 12 : m - 1;
+  const prevYear = m === 1 ? y - 1 : y;
+  const periodStart = `${prevYear}-${String(prevMonth).padStart(2, '0')}-15`;
+  const periodEnd = `${y}-${String(m).padStart(2, '0')}-14`;
+  return { periodStart, periodEnd };
+}
+
+function allDatesInRange(start, end) {
+  const dates = [];
+  const cur = new Date(start);
+  const endDate = new Date(end);
+  while (cur <= endDate) {
+    dates.push(cur.toISOString().slice(0, 10));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates;
+}
+
 router.get('/salary/:employeeId', async (req, res, next) => {
   try {
     const employeeId = Number(req.params.employeeId);
@@ -227,23 +358,28 @@ router.get('/salary/:employeeId', async (req, res, next) => {
     if (!emp) return res.status(404).json({ error: 'Employee not found' });
     const month = /^\d{4}-\d{2}$/.test(req.query.month || '') ? req.query.month : new Date().toISOString().slice(0, 7);
 
-    const [y, m] = month.split('-').map(Number);
-    const daysInMonth = new Date(y, m, 0).getDate();
-    const isOff = (day) => {
-      const dow = new Date(y, m - 1, day).getDay(); // 0=Sun, 6=Sat
+    const { periodStart, periodEnd } = getPayPeriod(month);
+    const allDates = allDatesInRange(periodStart, periodEnd);
+
+    const isOff = (dateStr) => {
+      const dow = new Date(dateStr).getDay();
       return (dow === 0 && emp.sunOff) || (dow === 6 && emp.satOff);
     };
-    let workingDays = 0;
-    for (let d = 1; d <= daysInMonth; d++) if (!isOff(d)) workingDays++;
 
-    const records = await prisma.attendance.findMany({ where: { employeeId, date: { startsWith: month }, present: true } });
+    let workingDays = 0;
+    for (const d of allDates) if (!isOff(d)) workingDays++;
+
+    const records = await prisma.attendance.findMany({
+      where: { employeeId, date: { gte: periodStart, lte: periodEnd }, present: true },
+    });
     let presentWorking = 0, presentOff = 0;
     for (const r of records) {
-      const day = Number(r.date.slice(8));
-      if (isOff(day)) presentOff++; else presentWorking++;
+      if (isOff(r.date)) presentOff++; else presentWorking++;
     }
 
-    const leaves = await prisma.leaveRequest.count({ where: { employeeId, status: 'approved', fromDate: { lte: `${month}-31` }, toDate: { gte: `${month}-01` } } });
+    const leaves = await prisma.leaveRequest.count({
+      where: { employeeId, status: 'approved', fromDate: { lte: periodEnd }, toDate: { gte: periodStart } },
+    });
 
     const perDay = workingDays > 0 ? emp.monthlySalary / workingDays : 0;
     const basePay = perDay * presentWorking;
@@ -251,10 +387,111 @@ router.get('/salary/:employeeId', async (req, res, next) => {
     const total = Math.round(basePay + offDayPay);
 
     res.json({
-      month, monthlySalary: emp.monthlySalary, satOff: emp.satOff, sunOff: emp.sunOff, sunMultiplier: emp.sunMultiplier,
-      daysInMonth, workingDays, presentWorking, presentOff, approvedLeaveRequests: leaves,
+      month, periodStart, periodEnd,
+      monthlySalary: emp.monthlySalary, satOff: emp.satOff, sunOff: emp.sunOff, sunMultiplier: emp.sunMultiplier,
+      totalDaysInPeriod: allDates.length, workingDays, presentWorking, presentOff, approvedLeaveRequests: leaves,
       perDay: Math.round(perDay * 100) / 100, basePay: Math.round(basePay), offDayPay: Math.round(offDayPay), total,
     });
+  } catch (e) { next(e); }
+});
+
+// ── Salary Slip PDF ──
+router.get('/salary/:employeeId/slip', async (req, res, next) => {
+  try {
+    const employeeId = Number(req.params.employeeId);
+    const emp = await prisma.employee.findUnique({ where: { id: employeeId } });
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
+    const month = /^\d{4}-\d{2}$/.test(req.query.month || '') ? req.query.month : new Date().toISOString().slice(0, 7);
+
+    const { periodStart, periodEnd } = getPayPeriod(month);
+    const allDates = allDatesInRange(periodStart, periodEnd);
+
+    const isOff = (dateStr) => {
+      const dow = new Date(dateStr).getDay();
+      return (dow === 0 && emp.sunOff) || (dow === 6 && emp.satOff);
+    };
+
+    let workingDays = 0;
+    for (const d of allDates) if (!isOff(d)) workingDays++;
+
+    const records = await prisma.attendance.findMany({
+      where: { employeeId, date: { gte: periodStart, lte: periodEnd }, present: true },
+    });
+    let presentWorking = 0, presentOff = 0;
+    for (const r of records) {
+      if (isOff(r.date)) presentOff++; else presentWorking++;
+    }
+
+    const perDay = workingDays > 0 ? emp.monthlySalary / workingDays : 0;
+    const basePay = perDay * presentWorking;
+    const offDayPay = perDay * (emp.sunMultiplier || 1) * presentOff;
+    const total = Math.round(basePay + offDayPay);
+
+    // Generate PDF
+    const PdfPrinter = (await import('pdfmake/src/printer.js')).default;
+    const FONTS = {
+      Helvetica: { normal: 'Helvetica', bold: 'Helvetica-Bold', italics: 'Helvetica-Oblique', bolditalics: 'Helvetica-BoldOblique' },
+    };
+    const printer = new PdfPrinter(FONTS);
+
+    const settings = await prisma.companySettings.findUnique({ where: { id: 1 } });
+
+    const fmtMoney = (n) => `Rs. ${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    const docDef = {
+      pageSize: 'A4',
+      pageMargins: [40, 40, 40, 40],
+      defaultStyle: { font: 'Helvetica', fontSize: 10, lineHeight: 1.3 },
+      content: [
+        { text: (settings?.companyName || 'Bharath Automation'), bold: true, fontSize: 16, alignment: 'center' },
+        { text: 'SALARY SLIP', bold: true, fontSize: 13, alignment: 'center', margin: [0, 4, 0, 0] },
+        { text: `Pay Period: ${periodStart} to ${periodEnd}`, fontSize: 9, alignment: 'center', margin: [0, 2, 0, 12] },
+        {
+          table: {
+            widths: ['*', '*'],
+            body: [
+              [{ text: 'Employee Name', bold: true }, emp.name],
+              [{ text: 'Employee ID', bold: true }, `EMP-${String(emp.id).padStart(3, '0')}`],
+              [{ text: 'Phone', bold: true }, emp.phone || '-'],
+            ],
+          },
+          layout: 'lightHorizontalLines',
+          margin: [0, 0, 0, 12],
+        },
+        {
+          table: {
+            widths: ['*', '*'],
+            body: [
+              [{ text: 'EARNINGS', bold: true, colSpan: 2, alignment: 'center', fillColor: '#f0f0f0' }, {}],
+              ['Basic Salary', fmtMoney(emp.monthlySalary)],
+              [`Working Days (${periodStart} – ${periodEnd})`, `${workingDays} days`],
+              ['Days Present (weekday)', `${presentWorking} days`],
+              ['Days Present (off-day)', `${presentOff} days`],
+              ['Per Day Rate', fmtMoney(perDay)],
+              [{ text: 'Base Pay', bold: true }, fmtMoney(basePay)],
+              ['Off-Day Allowance', fmtMoney(offDayPay)],
+              [{ text: 'NET PAY', bold: true, fillColor: '#f0f0f0' }, { text: fmtMoney(total), bold: true, fillColor: '#f0f0f0' }],
+            ],
+          },
+          layout: 'lightHorizontalLines',
+          margin: [0, 0, 0, 20],
+        },
+        { text: 'This is a computer-generated salary slip.', fontSize: 8, color: '#888', alignment: 'center' },
+      ],
+    };
+
+    const pdfDoc = printer.createPdfKitDocument(docDef);
+    const chunks = [];
+    pdfDoc.on('data', (c) => chunks.push(c));
+    pdfDoc.on('end', () => {
+      const buf = Buffer.concat(chunks);
+      const filename = `SalarySlip-${emp.name.replace(/\s+/g, '-')}-${month}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(buf);
+    });
+    pdfDoc.on('error', next);
+    pdfDoc.end();
   } catch (e) { next(e); }
 });
 

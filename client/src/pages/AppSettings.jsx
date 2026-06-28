@@ -28,6 +28,12 @@ export default function AppSettings() {
   const [toast, setToast] = useState(null);
   const flash = (msg, kind = 'ok') => { setToast({ msg, kind }); setTimeout(() => setToast(null), 3000); };
 
+  // Payment terms management
+  const [terms, setTerms] = useState([]);
+  const [newTerm, setNewTerm] = useState('');
+  const loadTerms = () => api.listPaymentTerms('?all=true').then(setTerms).catch(() => {});
+  useEffect(() => { loadTerms(); }, []);
+
   // Quotes
   const [quotes, setQuotes] = useState([]);
   const [schedule, setSchedule] = useState([]);
@@ -226,6 +232,50 @@ export default function AppSettings() {
                   <td style={{ fontSize: 12 }}>{new Date(s.loginAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
                   <td style={{ fontSize: 12 }}>{new Date(s.lastSeen).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
                   <td><span className={`badge ${s.status === 'active' ? 'rq-approved' : s.status === 'expired' ? 'rq-pending' : 'deleted'}`}>{s.status}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      {/* ── Payment Terms ── */}
+      <section className="fsec">
+        <div className="fsec-head">
+          <h3>Payment Terms <span className="hint">dropdown choices in Invoice editor</span></h3>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input value={newTerm} onChange={(e) => setNewTerm(e.target.value)} placeholder="e.g. Net 30" style={{ width: 180 }} />
+            <button className="btn xs" onClick={async () => {
+              if (!newTerm.trim()) return;
+              try { await api.createPaymentTerm({ label: newTerm.trim() }); setNewTerm(''); await loadTerms(); flash('Term added'); }
+              catch (e) { flash(e.message, 'err'); }
+            }}>+ Add</button>
+          </div>
+        </div>
+        <p className="subtle" style={{ fontSize: 12 }}>These appear as a dropdown when creating invoices. Toggle active/inactive to show or hide without deleting.</p>
+        {terms.length === 0 ? <p className="subtle">No payment terms yet.</p> : (
+          <table className="data-table">
+            <thead><tr><th>Label</th><th>Active</th><th className="r">Actions</th></tr></thead>
+            <tbody>
+              {terms.map((t) => (
+                <tr key={t.id}>
+                  <td className="strong">{t.label}</td>
+                  <td>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={t.active} onChange={async (e) => {
+                        try { await api.updatePaymentTerm(t.id, { active: e.target.checked }); await loadTerms(); }
+                        catch (err) { flash(err.message, 'err'); }
+                      }} />
+                      {t.active ? 'Active' : 'Inactive'}
+                    </label>
+                  </td>
+                  <td className="r">
+                    <button className="btn xs danger" onClick={async () => {
+                      if (!confirm(`Delete "${t.label}"?`)) return;
+                      try { await api.deletePaymentTerm(t.id); await loadTerms(); flash('Deleted'); }
+                      catch (e) { flash(e.message, 'err'); }
+                    }}>✕</button>
+                  </td>
                 </tr>
               ))}
             </tbody>

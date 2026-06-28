@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../lib/db.js';
 import { getSettings } from './settings.js';
-import { generateInvoicePdf } from '../lib/pdf.js';
+import { generateInvoicePdf, generateTripleCopyPdf } from '../lib/pdf.js';
 import { generateInvoiceDocx } from '../lib/docx.js';
 
 const router = Router();
@@ -42,6 +42,21 @@ router.get('/:id/docx', async (req, res, next) => {
     const buf = await generateInvoiceDocx(invoice, settings);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader('Content-Disposition', `attachment; filename="${safeName(invoice, 'docx')}"`);
+    res.send(buf);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ── Triple-copy (3 page PDF) by saved id ──
+router.get('/:id/triple-copy', async (req, res, next) => {
+  try {
+    const invoice = await loadInvoice(req.params.id);
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    const settings = await getSettings();
+    const buf = await generateTripleCopyPdf(invoice, settings);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName(invoice, 'pdf').replace('.pdf', '-3copy.pdf')}"`);
     res.send(buf);
   } catch (e) {
     next(e);

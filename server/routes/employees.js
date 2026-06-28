@@ -11,6 +11,7 @@ const DOC_FIELDS = { aadhar: 'aadharDoc', pan: 'panDoc', license: 'licenseDoc', 
 const today = () => localDate();
 
 function scalarData(b) {
+  const REFERRED_BY_TYPES = ['', 'walk-in', 'campus', 'referral'];
   return {
     name: (b.name || '').trim(),
     dob: b.dob ? new Date(b.dob) : null,
@@ -30,6 +31,14 @@ function scalarData(b) {
     sunOff: b.sunOff === undefined ? true : !!b.sunOff,
     sunMultiplier: Number(b.sunMultiplier) > 0 ? Number(b.sunMultiplier) : 2,
     active: b.active === undefined ? true : !!b.active,
+    // Extended fields (BRD §4.1)
+    permanentAddress: b.permanentAddress ?? '',
+    currentAddress: b.currentAddress ?? '',
+    familyLocationAddress: b.familyLocationAddress ?? '',
+    familyLocationLat: b.familyLocationLat != null ? parseFloat(b.familyLocationLat) : null,
+    familyLocationLng: b.familyLocationLng != null ? parseFloat(b.familyLocationLng) : null,
+    referredByType: REFERRED_BY_TYPES.includes(b.referredByType) ? (b.referredByType || '') : '',
+    referredByEmployeeId: b.referredByType === 'referral' && b.referredByEmployeeId ? Number(b.referredByEmployeeId) : null,
   };
 }
 
@@ -66,6 +75,14 @@ router.get('/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+async function validateReferral(b) {
+  if (b.referredByType === 'referral' && b.referredByEmployeeId) {
+    const ref = await prisma.employee.findUnique({ where: { id: Number(b.referredByEmployeeId) }, select: { id: true, active: true } });
+    if (!ref || !ref.active) return 'Referring employee not found or inactive';
+  }
+  return null;
+}
+
 // Create employee — a login account (user id + password) is the mandatory first step.
 router.post('/', async (req, res, next) => {
   try {
@@ -73,6 +90,8 @@ router.post('/', async (req, res, next) => {
     if (!(b.name || '').trim()) return res.status(400).json({ error: 'Employee name is required' });
     if (!(b.username || '').trim() || !(b.password || '').trim()) return res.status(400).json({ error: 'A login User ID and password are required' });
     if (String(b.password).length < 4) return res.status(400).json({ error: 'Password must be at least 4 characters' });
+    const refError = await validateReferral(b);
+    if (refError) return res.status(400).json({ error: refError });
 
     const emp = await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({ data: { username: b.username.trim(), role: 'user', passHash: hashPassword(b.password) } });
@@ -105,7 +124,10 @@ router.post('/:id/login', async (req, res, next) => {
 
 router.put('/:id', async (req, res, next) => {
   try {
-    const emp = await prisma.employee.update({ where: { id: Number(req.params.id) }, data: scalarData(req.body || {}) });
+    const b = req.body || {};
+    const refError = await validateReferral(b);
+    if (refError) return res.status(400).json({ error: refError });
+    const emp = await prisma.employee.update({ where: { id: Number(req.params.id) }, data: scalarData(b) });
     res.json(emp);
   } catch (e) {
     if (e.code === 'P2025') return res.status(404).json({ error: 'Employee not found' });
@@ -161,6 +183,72 @@ router.delete('/:id/document/:type', async (req, res, next) => {
     const field = DOC_FIELDS[req.params.type];
     if (!field) return res.status(400).json({ error: 'Unknown document type' });
     await prisma.employee.update({ where: { id: Number(req.params.id) }, data: { [field]: null } });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// ── Photo uploads (BRD §4.1) ──
+router.put('/:id/photo', async (req, res, next) => {
+  try {
+    const { dataUrl, type } = req.body || {};
+    if (!dataUrl || !dataUrl.startsWith('data:image/')) return res.status(400).json({ error: 'Upload an image file' });
+    if (dataUrlBytes(dataUrl) > 4 * 1024 * 1024) return res.status(400).json({ error: 'File exceeds 4 MB' });
+    const field = type === 'family' ? 'familyPhotoUrl' : 'photoUrl';
+    await prisma.employee.update({ where: { id: Number(req.params.id) }, data: { [field]: dataUrl } });
+    res.json({ ok: true });
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ error: 'Employee not found' });
+    next(e);
+  }
+});
+
+// ── Insurance / Academic docs arrays ──
+router.post('/:id/insurance-docs', async (req, res, next) => {
+  try {
+    const { dataUrl } = req.body || {};
+    if (!dataUrl) return res.status(400).json({ error: 'File required' });
+    if (dataUrlBytes(dataUrl) > 4 * 1024 * 1024) return res.status(400).json({ error: 'File exceeds 4 MB' });
+    const emp = await prisma.employee.findUnique({ where: { id: Number(req.params.id) }, select: { insuranceDocs: true } });
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
+    const updated = await prisma.employee.update({
+      where: { id: Number(req.params.id) },
+      data: { insuranceDocs: [...emp.insuranceDocs, dataUrl] },
+    });
+    res.json({ count: updated.insuranceDocs.length });
+  } catch (e) { next(e); }
+});
+
+router.delete('/:id/insurance-docs/:idx', async (req, res, next) => {
+  try {
+    const emp = await prisma.employee.findUnique({ where: { id: Number(req.params.id) }, select: { insuranceDocs: true } });
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
+    const docs = emp.insuranceDocs.filter((_, i) => i !== Number(req.params.idx));
+    await prisma.employee.update({ where: { id: Number(req.params.id) }, data: { insuranceDocs: docs } });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+router.post('/:id/academic-docs', async (req, res, next) => {
+  try {
+    const { dataUrl } = req.body || {};
+    if (!dataUrl) return res.status(400).json({ error: 'File required' });
+    if (dataUrlBytes(dataUrl) > 4 * 1024 * 1024) return res.status(400).json({ error: 'File exceeds 4 MB' });
+    const emp = await prisma.employee.findUnique({ where: { id: Number(req.params.id) }, select: { academicDocs: true } });
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
+    const updated = await prisma.employee.update({
+      where: { id: Number(req.params.id) },
+      data: { academicDocs: [...emp.academicDocs, dataUrl] },
+    });
+    res.json({ count: updated.academicDocs.length });
+  } catch (e) { next(e); }
+});
+
+router.delete('/:id/academic-docs/:idx', async (req, res, next) => {
+  try {
+    const emp = await prisma.employee.findUnique({ where: { id: Number(req.params.id) }, select: { academicDocs: true } });
+    if (!emp) return res.status(404).json({ error: 'Employee not found' });
+    const docs = emp.academicDocs.filter((_, i) => i !== Number(req.params.idx));
+    await prisma.employee.update({ where: { id: Number(req.params.id) }, data: { academicDocs: docs } });
     res.json({ ok: true });
   } catch (e) { next(e); }
 });

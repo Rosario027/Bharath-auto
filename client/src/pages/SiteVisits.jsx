@@ -16,6 +16,7 @@ export default function SiteVisits() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('all');
+  const [categoryF, setCategoryF] = useState('all');
   const [districtF, setDistrictF] = useState('all');
   const [execF, setExecF] = useState('all');
   const [sort, setSort] = useState({ key: 'updated', dir: 'desc' });
@@ -36,6 +37,7 @@ export default function SiteVisits() {
     const ql = q.trim().toLowerCase();
     const filtered = visits.filter((v) =>
       (filter === 'all' || v.status === filter) &&
+      (categoryF === 'all' || v.visitCategory === categoryF) &&
       (districtF === 'all' || (v.district || '').trim() === districtF) &&
       (execF === 'all' || v.employee?.name === execF) &&
       (!ql ||
@@ -89,6 +91,11 @@ export default function SiteVisits() {
 
       <div className="toolbar" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <input className="search" placeholder="Search site name, ref, customer, builder, phone, quote no…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <div style={{ display: 'flex', gap: 4 }}>
+          {[['all', 'All'], ['project_visit', '🏗 Project'], ['lead_visit', '🎯 Lead']].map(([val, label]) => (
+            <button key={val} className={`seg-toggle ${categoryF === val ? 'on' : ''}`} onClick={() => setCategoryF(val)}>{label}</button>
+          ))}
+        </div>
         {['all', 'assigned', 'open', 'follow-up', 'closed'].map((f) => (
           <button key={f} className={`seg-toggle ${filter === f ? 'on' : ''}`} onClick={() => setFilter(f)}>
             {f === 'all' ? `All (${visits.length})` : `${f} (${count(f)})`}

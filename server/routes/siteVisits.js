@@ -61,6 +61,20 @@ function masterData(b) {
     whoIsFollowing: b.whoIsFollowing ?? '',
     probability: Number(b.probability) || 0,
     remarks: b.remarks ?? '',
+    // BRD §2.1 — visit category split
+    visitCategory: ['project_visit', 'lead_visit'].includes(b.visitCategory) ? b.visitCategory : 'lead_visit',
+    // BRD §2.2 — dynamic checklist + resource allocation
+    itemsChecklist: typeof b.itemsChecklist === 'string' ? b.itemsChecklist : JSON.stringify(b.itemsChecklist || []),
+    othersNote: b.othersNote ?? '',
+    siteVisitLeads: typeof b.siteVisitLeads === 'string' ? b.siteVisitLeads : JSON.stringify(b.siteVisitLeads || []),
+    technicalPersonnel: typeof b.technicalPersonnel === 'string' ? b.technicalPersonnel : JSON.stringify(b.technicalPersonnel || []),
+    keyPersonName: b.keyPersonName ?? '',
+    keyPersonRole: b.keyPersonRole ?? '',
+    keyPersonPhone: b.keyPersonPhone ?? '',
+    // Lead visit specific
+    dimensions: b.dimensions ?? '',
+    estimatedCost: Number(b.estimatedCost) || 0,
+    siteEvaluation: b.siteEvaluation ?? '',
   };
 }
 
@@ -88,6 +102,7 @@ router.get('/', async (req, res, next) => {
     if (!c) return;
     const where = c.isAdmin ? {} : { employeeId: c.employee.id };
     if (req.query.status) where.status = req.query.status;
+    if (req.query.visitCategory) where.visitCategory = req.query.visitCategory;
     const visits = await prisma.siteVisit.findMany({
       where,
       orderBy: { updatedAt: 'desc' },
@@ -214,9 +229,9 @@ router.post('/:id/updates', async (req, res, next) => {
       summary: b.summary.trim(),
     };
 
-    const [update] = await prisma.$transaction([
-      prisma.siteVisitUpdate.create({ data: { siteVisitId: id, tranche: trancheNo, byUsername: req.user.username, ...t } }),
-      prisma.siteVisit.update({
+    const [update] = await prisma.$transaction(async (tx) => {
+      const upd = await tx.siteVisitUpdate.create({ data: { siteVisitId: id, tranche: trancheNo, byUsername: req.user.username, ...t } });
+      await tx.siteVisit.update({
         where: { id },
         data: {
           visitType: t.visitType,
@@ -229,8 +244,9 @@ router.post('/:id/updates', async (req, res, next) => {
           probability: t.probability,
           remarks: t.summary,
         },
-      }),
-    ]);
+      });
+      return [upd];
+    });
     res.status(201).json(update);
   } catch (e) { next(e); }
 });
