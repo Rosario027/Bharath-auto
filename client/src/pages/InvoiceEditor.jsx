@@ -177,11 +177,14 @@ export default function InvoiceEditor() {
         if (alive) setInv(toForm(data));
       } else {
         const base = defaultInvoice(settings);
-        const invSeries = seriesList.filter((s) => (s.docType || 'invoice') === 'invoice');
+        // Start in Purchase Order mode when launched from /purchase-orders/new.
+        const startType = (searchParams.get('type') === 'purchase-order' || window.location.pathname.startsWith('/purchase-orders')) ? 'purchase-order' : 'invoice';
+        if (startType === 'purchase-order') { base.docType = 'purchase-order'; base.title = 'Purchase Order'; }
+        const invSeries = seriesList.filter((s) => (s.docType || 'invoice') === startType);
         const def = invSeries.find((s) => s.isDefault) || invSeries[0];
         base.seriesId = def?.id ?? null;
         try {
-          const { invoiceNo } = await api.nextNumber(base.seriesId, 'invoice');
+          const { invoiceNo } = await api.nextNumber(base.seriesId, startType);
           base.invoiceNo = invoiceNo;
         } catch { /* ignore */ }
         // Prefill from ?client=:id (e.g. "New invoice for this client")
@@ -239,7 +242,8 @@ export default function InvoiceEditor() {
     }
   };
 
-  const DOC_LABELS = { invoice: settings.invoiceTitle, 'credit-note': 'Credit Note', 'debit-note': 'Debit Note' };
+  const DOC_LABELS = { invoice: settings.invoiceTitle, 'credit-note': 'Credit Note', 'debit-note': 'Debit Note', 'purchase-order': 'Purchase Order' };
+  const isPO = (inv.docType || 'invoice') === 'purchase-order';
   const changeDocType = async (dt) => {
     const list = series.filter((s) => (s.docType || 'invoice') === dt);
     const def = list.find((s) => s.isDefault) || list[0];
@@ -303,6 +307,20 @@ export default function InvoiceEditor() {
   const saveAndNew = async () => {
     const r = await persist();
     if (r) { flash('Saved — ready for the next invoice'); await resetToNew(); }
+  };
+
+  // Convert this purchase order into a sales invoice (save first if needed).
+  const convertToInvoice = async () => {
+    const target = await ensureSaved();
+    if (!target) return;
+    if (!confirm('Convert this purchase order into a tax invoice? Stock will be deducted and the invoice will post to the books.')) return;
+    setBusy('convert');
+    try {
+      const inv2 = await api.convertPoToInvoice(target.id);
+      flash(`Invoice ${inv2.invoiceNo} created from this PO`);
+      nav(`/invoice/${inv2.id}`);
+    } catch (e) { flash(e.message, 'err'); }
+    finally { setBusy(''); }
   };
 
   // ── Exports ── (record the invoice first, then clear for the next)
@@ -397,9 +415,12 @@ export default function InvoiceEditor() {
       {/* ── Left: form ── */}
       <div className="editor-form">
         <div className="form-head">
-          <button className="btn ghost" onClick={() => nav('/')}>&larr; Back</button>
-          <h2>{savedId ? `Edit ${inv.invoiceNo}` : 'New Invoice'}</h2>
+          <button className="btn ghost" onClick={() => nav(isPO ? '/purchase-orders' : '/')}>&larr; Back</button>
+          <h2>{savedId ? `Edit ${inv.invoiceNo}` : isPO ? 'New Purchase Order' : 'New Invoice'}</h2>
           {inv.editCount > 0 && <span className="badge edited" title={`Edited ${inv.editCount} time(s)`}>edited ×{inv.editCount}</span>}
+          {isPO && inv.poStatus && <span className={`badge po-${inv.poStatus}`} style={{ textTransform: 'capitalize' }}>{inv.poStatus}</span>}
+          {inv.convertedToNo && <span className="badge" style={{ background: '#e7f6ec', color: '#1f8f4e' }}>→ {inv.convertedToNo}</span>}
+          {inv.convertedFromNo && <span className="badge" style={{ background: '#eef2ff', color: '#3b4cca' }}>from PO {inv.convertedFromNo}</span>}
         </div>
 
         {/* Sale type — drives CGST+SGST vs IGST across the whole invoice */}
@@ -412,24 +433,28 @@ export default function InvoiceEditor() {
         </div>
 
         <section className="fsec">
-          <h3>Invoice Details</h3>
+          <h3>{isPO ? 'Purchase Order Details' : 'Invoice Details'}</h3>
           <div className="grid2">
             <label>Document Type
               <select value={inv.docType || 'invoice'} disabled={!!savedId} onChange={(e) => changeDocType(e.target.value)}>
                 <option value="invoice">Tax Invoice</option>
                 <option value="credit-note">Credit Note</option>
                 <option value="debit-note">Debit Note</option>
+                <option value="purchase-order">Purchase Order</option>
               </select>
             </label>
             {(inv.docType === 'credit-note' || inv.docType === 'debit-note') && (
               <label>Against Invoice No<input value={inv.againstInvoiceNo || ''} placeholder="Original invoice e.g. BA/TR/PS-0022" onChange={(e) => set({ againstInvoiceNo: e.target.value })} /></label>
+            )}
+            {isPO && (
+              <label>Expected Date<input type="date" value={inv.expectedDate ? String(inv.expectedDate).slice(0, 10) : ''} onChange={(e) => set({ expectedDate: e.target.value })} /></label>
             )}
             <label>Series
               <select value={inv.seriesId ?? ''} disabled={!!savedId} onChange={(e) => changeSeries(e.target.value)}>
                 {series.filter((s) => (s.docType || 'invoice') === (inv.docType || 'invoice')).map((s) => <option key={s.id} value={s.id}>{s.name} ({s.prefix})</option>)}
               </select>
             </label>
-            <label>Invoice No <span className="hint">auto</span>
+            <label>{isPO ? 'PO No' : 'Invoice No'} <span className="hint">auto</span>
               <input value={inv.invoiceNo} readOnly title="Auto-generated from the series — change the series in Settings" />
             </label>
             <label>Date<input type="date" value={inv.invoiceDate} onChange={(e) => set({ invoiceDate: e.target.value })} /></label>
@@ -632,10 +657,18 @@ export default function InvoiceEditor() {
             <button className="btn" onClick={() => doExport('docx')} disabled={busy === 'docx'}>{busy === 'docx' ? '…' : 'Word'}</button>
             <button className="btn wa" onClick={shareWhatsApp}>WhatsApp</button>
             <button className="btn" onClick={shareEmail}>Email</button>
-            {isAdmin && savedId && (
+            {isAdmin && savedId && !isPO && (
               <button className="btn" onClick={() => nav(`/delivery-challans?invoiceId=${savedId}&invoiceNo=${encodeURIComponent(inv.invoiceNo)}`)}>
                 Create DC
               </button>
+            )}
+            {isPO && savedId && inv.poStatus !== 'invoiced' && inv.poStatus !== 'cancelled' && !inv.convertedToNo && (
+              <button className="btn primary" onClick={convertToInvoice} disabled={busy === 'convert'} title="Create a tax invoice from this purchase order">
+                {busy === 'convert' ? 'Converting…' : '→ Convert to Invoice'}
+              </button>
+            )}
+            {isPO && inv.convertedToNo && (
+              <span className="badge" style={{ background: '#e7f6ec', color: '#1f8f4e', alignSelf: 'center' }}>Converted → {inv.convertedToNo}</span>
             )}
           </div>
         </div>

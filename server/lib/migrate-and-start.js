@@ -16,6 +16,17 @@ try {
   process.exit(1);
 }
 
+// Login accounts FIRST and on their own — so a failure anywhere else in the
+// seed (settings, quotes, series, payment terms) can never leave the app
+// without working logins. Owner / Staff are guaranteed before anything else.
+try {
+  const { ensureUsers } = await import('./seed.js');
+  await ensureUsers();
+  console.log('[boot] login accounts ensured (Owner / Staff).');
+} catch (err) {
+  console.error('[boot] ensureUsers FAILED:', err);
+}
+
 try {
   const { seed } = await import('./seed.js');
   await seed();

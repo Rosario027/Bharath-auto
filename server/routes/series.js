@@ -21,7 +21,7 @@ router.post('/', async (req, res, next) => {
   try {
     const b = req.body || {};
     if (!(b.prefix || '').trim()) return res.status(400).json({ error: 'Series prefix is required' });
-    const docType = ['credit-note', 'debit-note'].includes(b.docType) ? b.docType : 'invoice';
+    const docType = ['credit-note', 'debit-note', 'purchase-order'].includes(b.docType) ? b.docType : 'invoice';
     const makeDefault = !!b.isDefault;
     if (makeDefault) await prisma.invoiceSeries.updateMany({ where: { docType }, data: { isDefault: false } });
     const series = await prisma.invoiceSeries.create({

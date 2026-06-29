@@ -191,6 +191,38 @@ body {
 .recon-alert { display: block; width: 100%; text-align: left; background: #fff7ed; border: 1px solid #f5cf9f; border-left: 4px solid var(--brand-orange); color: #8a5a18; border-radius: 10px; padding: 12px 16px; font-size: 13.5px; cursor: pointer; margin-bottom: 16px; }
 .recon-alert:hover { background: #fff1dd; }
 
+/* ── Guided accounting workflow ── */
+.wf-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  background: #f4f8ff; border: 1px solid #d6e2fb; border-left: 4px solid #3b67d6; border-radius: 10px; padding: 12px 16px; margin: 14px 0; font-size: 14px; }
+.wf-steps { display: flex; flex-direction: column; gap: 12px; }
+.wf-step { display: flex; align-items: center; gap: 16px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; cursor: pointer; transition: box-shadow .15s, transform .05s, border-color .15s; position: relative; }
+.wf-step:hover { box-shadow: 0 4px 16px rgba(0,0,0,.07); border-color: #cdd5e0; }
+.wf-step:active { transform: translateY(1px); }
+.wf-step::before { content: ''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 4px; border-radius: 4px; background: var(--line); }
+.wf-step.tone-warn::before { background: var(--brand-orange); }
+.wf-step.tone-done::before { background: var(--brand-green); }
+.wf-num { flex: 0 0 38px; height: 38px; width: 38px; border-radius: 50%; background: #f1f4f9; color: #4a5568; font-weight: 800; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+.wf-step.tone-warn .wf-num { background: #fff1dd; color: #b9651a; }
+.wf-step.tone-done .wf-num { background: #e7f6ec; color: #1f8f4e; }
+.wf-body { flex: 1; min-width: 0; }
+.wf-step-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.wf-step-head h3 { margin: 0; font-size: 15.5px; }
+.wf-body p { margin: 4px 0 0; font-size: 13px; }
+.wf-badge { font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 20px; background: #eef1f5; color: #5a6473; white-space: nowrap; }
+.wf-badge.warn { background: #fff1dd; color: #b9651a; }
+.wf-badge.done { background: #e7f6ec; color: #1f8f4e; }
+.wf-badge.ok { background: #eef2ff; color: #3b4cca; }
+.wf-cta { flex: 0 0 auto; white-space: nowrap; }
+.wf-setup { display: flex; gap: 10px; flex-wrap: wrap; }
+.wf-chip { border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 10px 14px; font-weight: 700; font-size: 13px; color: #44505f; cursor: pointer; }
+.wf-chip:hover { background: #f7f9fc; border-color: #cdd5e0; }
+
+/* ── Purchase order status badges ── */
+.badge.po-open { background: #eef2ff; color: #3b4cca; }
+.badge.po-invoiced { background: #e7f6ec; color: #1f8f4e; }
+.badge.po-closed { background: #eef1f5; color: #5a6473; }
+.badge.po-cancelled { background: #fdecea; color: #c0392b; }
+
 /* permissions editor */
 .perm-grid { display: flex; flex-direction: column; gap: 8px; }
 .perm-row { display: grid; grid-template-columns: 140px auto auto auto; gap: 8px; align-items: center; }

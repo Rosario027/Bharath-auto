@@ -75,6 +75,9 @@ export const api = {
   createInvoice: (data) => req('/invoices', { method: 'POST', body: JSON.stringify(data) }),
   updateInvoice: (id, data) => req(`/invoices/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteInvoice: (id) => req(`/invoices/${id}`, { method: 'DELETE' }),
+  // purchase orders (a docType inside the billing module)
+  setPoStatus: (id, poStatus) => req(`/invoices/${id}/po-status`, { method: 'PATCH', body: JSON.stringify({ poStatus }) }),
+  convertPoToInvoice: (id, seriesId) => req(`/invoices/${id}/convert-to-invoice`, { method: 'POST', body: JSON.stringify({ seriesId }) }),
 
   // invoice series
   listSeries: () => req('/series'),

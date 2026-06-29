@@ -21,6 +21,7 @@ import Inventory from './pages/Inventory.jsx';
 import Reports from './pages/Reports.jsx';
 import Overview from './pages/Overview.jsx';
 import Accounting from './pages/Accounting.jsx';
+import AccWorkflow from './pages/AccWorkflow.jsx';
 import AccVoucherEntry from './pages/AccVoucherEntry.jsx';
 import AccLedgers from './pages/AccLedgers.jsx';
 import AccBankRecon from './pages/AccBankRecon.jsx';
@@ -28,6 +29,7 @@ import AccPurchases from './pages/AccPurchases.jsx';
 import AccReports from './pages/AccReports.jsx';
 import AccAssets from './pages/AccAssets.jsx';
 import DeliveryChallan from './pages/DeliveryChallan.jsx';
+import PurchaseOrders from './pages/PurchaseOrders.jsx';
 import RMA from './pages/RMA.jsx';
 import BusinessAssets from './pages/BusinessAssets.jsx';
 import StaffGoals from './pages/StaffGoals.jsx';
@@ -185,6 +187,7 @@ function Sidebar({ onNavigate, isAdmin, isStaff, user }) {
             <div className="nav-sub">
               {sub(isStaff ? '/invoices' : '/', 'Dashboard', true)}
               {sub('/new', 'New Invoice')}
+              {sub('/purchase-orders', 'Purchase Orders')}
               {isAdmin && sub('/delivery-challans', 'Delivery Challans')}
               {isAdmin && sub('/rma', 'RMA')}
               {isAdmin && sub('/settings', 'Invoice Settings')}
@@ -251,11 +254,12 @@ function Sidebar({ onNavigate, isAdmin, isStaff, user }) {
           </button>
           {accOpen && (
             <div className="nav-sub">
-              {sub('/accounting', 'Day Book', true)}
+              {sub('/accounting', 'Workflow', true)}
+              {sub('/accounting/bank-recon', 'Bank & Payments')}
               {sub('/accounting/voucher/new', 'Voucher Entry')}
               {sub('/accounting/purchases', 'Purchases')}
+              {sub('/accounting/daybook', 'Day Book')}
               {sub('/accounting/ledgers', 'Ledgers')}
-              {sub('/accounting/bank-recon', 'Bank Reconciliation')}
               {sub('/accounting/reports', 'Statements')}
               {sub('/accounting/assets', 'Fixed Assets')}
             </div>
@@ -387,6 +391,8 @@ export default function App() {
                 <Route path="/invoices" element={<Dashboard />} />
                 <Route path="/me" element={isStaff ? <StaffHome /> : <Navigate to="/" replace />} />
                 <Route path="/new" element={<InvoiceEditor key="new" />} />
+                <Route path="/purchase-orders" element={<PurchaseOrders />} />
+                <Route path="/purchase-orders/new" element={<InvoiceEditor key="po-new" />} />
                 <Route path="/invoice/:id" element={<InvoiceEditor />} />
                 <Route path="/settings" element={<AdminOnly><Settings /></AdminOnly>} />
                 <Route path="/clients" element={<AdminOnly><Clients /></AdminOnly>} />
@@ -404,7 +410,8 @@ export default function App() {
                 <Route path="/inventory" element={<Inventory />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/overview" element={<AdminOnly><Overview /></AdminOnly>} />
-                <Route path="/accounting" element={<Accounting />} />
+                <Route path="/accounting" element={<AccWorkflow />} />
+                <Route path="/accounting/daybook" element={<Accounting />} />
                 <Route path="/accounting/voucher/new" element={<AccVoucherEntry key="new" />} />
                 <Route path="/accounting/voucher/:id" element={<AccVoucherEntry />} />
                 <Route path="/accounting/ledgers" element={<AccLedgers />} />

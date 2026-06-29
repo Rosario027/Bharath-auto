@@ -54,7 +54,7 @@ export default function AccAssets() {
       {toast && <div className={`toast ${toast.kind}`}>{toast.msg}</div>}
       <header className="page-head">
         <div>
-          <button className="btn ghost" onClick={() => nav('/accounting')}>&larr; Day Book</button>
+          <button className="btn ghost" onClick={() => nav('/accounting')}>&larr; Accounting</button>
           <h1 style={{ marginTop: 6 }}>Fixed Asset Schedule</h1>
           <p className="subtle">Gross block, additions & depreciation (WDV on opening WDV + additions; SLM on cost + additions).</p>
         </div>

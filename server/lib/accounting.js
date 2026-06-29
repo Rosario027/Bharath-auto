@@ -87,6 +87,8 @@ export async function nextVoucherNo(tx, vtype) {
 //  Sales:   Dr Customer (Sundry Debtors)  Cr Sales + Cr GST Output
 //  CN:      reverse of sales              DN: same direction as sales
 export async function postInvoiceToBooks(invoice) {
+  // Purchase orders are commitments, not financial transactions — never post.
+  if (invoice.docType === 'purchase-order') return null;
   await ensureCoA();
   const existing = await prisma.accVoucher.findUnique({ where: { sourceInvoiceId: invoice.id } });
   if (existing) return existing;
@@ -254,7 +256,7 @@ export async function removePurchaseFromBooks(bill) {
 
 // Post every invoice that isn't in the books yet (backfill / sync button).
 export async function syncAllInvoices() {
-  const invoices = await prisma.invoice.findMany({ where: { status: { not: 'deleted' } }, include: { items: true } });
+  const invoices = await prisma.invoice.findMany({ where: { status: { not: 'deleted' }, docType: { not: 'purchase-order' } }, include: { items: true } });
   let posted = 0;
   for (const inv of invoices) {
     const v = await postInvoiceToBooks(inv).catch(() => null);

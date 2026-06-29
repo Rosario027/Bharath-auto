@@ -3,16 +3,59 @@
 // row if it does not already exist, so user edits in Settings are preserved.
 import 'dotenv/config';
 import { prisma } from './db.js';
-import { hashPassword } from './auth.js';
+import { hashPassword, verifyPassword } from './auth.js';
+
+// Default login credentials. These are fixed by design so the documented
+// logins always work after a deploy. Only the PASSWORDS may be overridden
+// (via env) — the usernames are intentionally NOT taken from the old
+// ADMIN_USER/USER_USER env vars, which used to point at "Admin"/"User" and
+// silently override this. The admin signs in as Owner, the staff account as Staff.
+const ADMIN_USER = 'Owner';
+const ADMIN_PASS = process.env.ADMIN_PASS || 'Owner123';
+const STAFF_USER = 'Staff';
+const STAFF_PASS = process.env.USER_PASS || 'Staff123';
 
 export async function ensureUsers() {
-  const count = await prisma.user.count();
-  if (count === 0) {
-    await prisma.user.create({ data: { username: process.env.ADMIN_USER || 'Admin', role: 'admin', passHash: hashPassword(process.env.ADMIN_PASS || 'Admin123') } });
-    await prisma.user.create({ data: { username: process.env.USER_USER || 'User', role: 'user', passHash: hashPassword(process.env.USER_PASS || 'User123') } });
-    console.log('[seed] Default users created (Admin / User).');
-  }
+  // Adopt any legacy default account (Admin / User) into the new identity,
+  // otherwise create it — and always make the password & role match, so the
+  // documented credentials are guaranteed to work on every boot.
+  await ensureLoginAccount('admin', ADMIN_USER, ADMIN_PASS, ['Admin']);
+  await ensureLoginAccount('user', STAFF_USER, STAFF_PASS, ['User']);
   await ensureStaffProfiles();
+}
+
+async function ensureLoginAccount(role, name, pass, legacyNames = []) {
+  let user = await prisma.user.findUnique({ where: { username: name } });
+
+  // No account with the desired name yet — adopt a legacy one if present so we
+  // keep its linked employee profile / sessions, instead of orphaning them.
+  if (!user) {
+    for (const legacyName of legacyNames) {
+      if (legacyName === name) continue;
+      const legacy = await prisma.user.findUnique({ where: { username: legacyName } });
+      if (legacy) {
+        user = await prisma.user.update({
+          where: { id: legacy.id },
+          data: { username: name, role, passHash: hashPassword(pass) },
+        });
+        console.log(`[seed] Login "${legacyName}" migrated to "${name}".`);
+        break;
+      }
+    }
+  }
+
+  if (!user) {
+    await prisma.user.create({ data: { username: name, role, passHash: hashPassword(pass) } });
+    console.log(`[seed] Login "${name}" created.`);
+    return;
+  }
+
+  // Account exists under the right name — make sure the role and password are
+  // the documented defaults (self-heals a stuck / unknown password).
+  if (user.role !== role || !verifyPassword(pass, user.passHash)) {
+    await prisma.user.update({ where: { id: user.id }, data: { role, passHash: hashPassword(pass) } });
+    console.log(`[seed] Login "${name}" credentials reset to default.`);
+  }
 }
 
 // Every non-admin login must be able to use the staff portal (attendance,
@@ -46,6 +89,9 @@ export async function ensureDefaultSeries(settings) {
   if (cn === 0) await prisma.invoiceSeries.create({ data: { name: 'Credit Note', prefix: 'CN-', nextSeq: 1, isDefault: true, docType: 'credit-note' } });
   const dn = await prisma.invoiceSeries.count({ where: { docType: 'debit-note' } });
   if (dn === 0) await prisma.invoiceSeries.create({ data: { name: 'Debit Note', prefix: 'DN-', nextSeq: 1, isDefault: true, docType: 'debit-note' } });
+  // Purchase order series — its own running serial number (SR No).
+  const po = await prisma.invoiceSeries.count({ where: { docType: 'purchase-order' } });
+  if (po === 0) await prisma.invoiceSeries.create({ data: { name: 'Purchase Order', prefix: 'BA/PO-', nextSeq: 1, padWidth: 4, isDefault: true, docType: 'purchase-order' } });
 }
 
 const KURALS = [

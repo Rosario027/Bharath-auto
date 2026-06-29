@@ -512,9 +512,16 @@ model Invoice {
   id            Int      @id @default(autoincrement())
   invoiceNo     String   @unique
   seriesId      Int?     // which InvoiceSeries produced this number
-  docType       String   @default("invoice") // invoice | credit-note | debit-note
+  docType       String   @default("invoice") // invoice | credit-note | debit-note | purchase-order
   againstInvoiceNo String @default("") // CN/DN: the original invoice referenced
   invoiceDate   DateTime @default(now())
+
+  // Purchase Order lifecycle (only meaningful when docType = "purchase-order").
+  // open → invoiced (converted to a sales invoice) → closed | cancelled.
+  poStatus      String   @default("open")
+  convertedToNo String   @default("") // invoice number this PO was converted into
+  convertedFromNo String @default("") // PO number this invoice was created from
+  expectedDate  DateTime? // requested delivery / fulfilment date on the PO
 
   // Document meta (overridable per invoice, defaulted from settings)
   title         String   @default("Commercial Invoice")
