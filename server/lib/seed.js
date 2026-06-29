@@ -5,15 +5,15 @@ import 'dotenv/config';
 import { prisma } from './db.js';
 import { hashPassword, verifyPassword } from './auth.js';
 
-// Default login credentials. These are fixed by design so the documented
-// logins always work after a deploy. Only the PASSWORDS may be overridden
-// (via env) — the usernames are intentionally NOT taken from the old
-// ADMIN_USER/USER_USER env vars, which used to point at "Admin"/"User" and
-// silently override this. The admin signs in as Owner, the staff account as Staff.
+// Default login credentials — FIXED in code, intentionally NOT read from env.
+// The old ADMIN_USER/ADMIN_PASS/USER_USER/USER_PASS variables used to point at
+// "Admin"/"Admin123" and would silently override these (and break the
+// documented logins on hosts that still have them set), so they are ignored.
+// Admin signs in as Owner / Owner123, the staff account as Staff / Staff123.
 const ADMIN_USER = 'Owner';
-const ADMIN_PASS = process.env.ADMIN_PASS || 'Owner123';
+const ADMIN_PASS = 'Owner123';
 const STAFF_USER = 'Staff';
-const STAFF_PASS = process.env.USER_PASS || 'Staff123';
+const STAFF_PASS = 'Staff123';
 
 export async function ensureUsers() {
   // Adopt any legacy default account (Admin / User) into the new identity,
