@@ -3,41 +3,59 @@
 // row if it does not already exist, so user edits in Settings are preserved.
 import 'dotenv/config';
 import { prisma } from './db.js';
-import { hashPassword } from './auth.js';
+import { hashPassword, verifyPassword } from './auth.js';
 
-// Default login credentials — admin signs in as Owner/Owner123, the staff
-// (non-admin) account as Staff/Staff123. Override via env if needed.
-const ADMIN_USER = process.env.ADMIN_USER || 'Owner';
+// Default login credentials. These are fixed by design so the documented
+// logins always work after a deploy. Only the PASSWORDS may be overridden
+// (via env) — the usernames are intentionally NOT taken from the old
+// ADMIN_USER/USER_USER env vars, which used to point at "Admin"/"User" and
+// silently override this. The admin signs in as Owner, the staff account as Staff.
+const ADMIN_USER = 'Owner';
 const ADMIN_PASS = process.env.ADMIN_PASS || 'Owner123';
-const STAFF_USER = process.env.USER_USER || 'Staff';
+const STAFF_USER = 'Staff';
 const STAFF_PASS = process.env.USER_PASS || 'Staff123';
 
 export async function ensureUsers() {
-  const count = await prisma.user.count();
-  if (count === 0) {
-    await prisma.user.create({ data: { username: ADMIN_USER, role: 'admin', passHash: hashPassword(ADMIN_PASS) } });
-    await prisma.user.create({ data: { username: STAFF_USER, role: 'user', passHash: hashPassword(STAFF_PASS) } });
-    console.log(`[seed] Default users created (${ADMIN_USER} / ${STAFF_USER}).`);
-  }
-  await migrateDefaultCredentials();
+  // Adopt any legacy default account (Admin / User) into the new identity,
+  // otherwise create it — and always make the password & role match, so the
+  // documented credentials are guaranteed to work on every boot.
+  await ensureLoginAccount('admin', ADMIN_USER, ADMIN_PASS, ['Admin']);
+  await ensureLoginAccount('user', STAFF_USER, STAFF_PASS, ['User']);
   await ensureStaffProfiles();
 }
 
-// One-time migration for books that were first seeded with the old default
-// logins (Admin / User). Rename them to the new Owner / Staff identities and
-// reset their passwords. Guarded by "legacy name exists AND new name does not",
-// so it runs at most once and never clobbers a password the owner later set.
-export async function migrateDefaultCredentials() {
-  const rename = async (oldName, newName, role, pass) => {
-    const legacy = await prisma.user.findUnique({ where: { username: oldName } });
-    if (!legacy) return;
-    const taken = await prisma.user.findUnique({ where: { username: newName } });
-    if (taken) return;
-    await prisma.user.update({ where: { id: legacy.id }, data: { username: newName, role, passHash: hashPassword(pass) } });
-    console.log(`[seed] Login "${oldName}" migrated to "${newName}".`);
-  };
-  await rename('Admin', ADMIN_USER, 'admin', ADMIN_PASS);
-  await rename('User', STAFF_USER, 'user', STAFF_PASS);
+async function ensureLoginAccount(role, name, pass, legacyNames = []) {
+  let user = await prisma.user.findUnique({ where: { username: name } });
+
+  // No account with the desired name yet — adopt a legacy one if present so we
+  // keep its linked employee profile / sessions, instead of orphaning them.
+  if (!user) {
+    for (const legacyName of legacyNames) {
+      if (legacyName === name) continue;
+      const legacy = await prisma.user.findUnique({ where: { username: legacyName } });
+      if (legacy) {
+        user = await prisma.user.update({
+          where: { id: legacy.id },
+          data: { username: name, role, passHash: hashPassword(pass) },
+        });
+        console.log(`[seed] Login "${legacyName}" migrated to "${name}".`);
+        break;
+      }
+    }
+  }
+
+  if (!user) {
+    await prisma.user.create({ data: { username: name, role, passHash: hashPassword(pass) } });
+    console.log(`[seed] Login "${name}" created.`);
+    return;
+  }
+
+  // Account exists under the right name — make sure the role and password are
+  // the documented defaults (self-heals a stuck / unknown password).
+  if (user.role !== role || !verifyPassword(pass, user.passHash)) {
+    await prisma.user.update({ where: { id: user.id }, data: { role, passHash: hashPassword(pass) } });
+    console.log(`[seed] Login "${name}" credentials reset to default.`);
+  }
 }
 
 // Every non-admin login must be able to use the staff portal (attendance,
